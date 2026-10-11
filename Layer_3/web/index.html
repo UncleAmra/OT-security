@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SCADA Operator Workstation</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="scada-header">
+    <div class="header-left">
+      <span class="plant-title">OT POWER STATION - UNIT 1</span>
+    </div>
+    <div class="header-center">
+      <span id="plc-status-text">PLC: CONNECTING...</span>
+      <span id="mft-status-text">SIS: HEALTHY</span>
+      <span id="grid-status-text">GRID: DISCONNECTED</span>
+    </div>
+    <div class="header-right">
+      <div id="scada-clock">00:00:00 UTC</div>
+      <button class="btn btn-danger" id="btn-esd">EMERGENCY TRIP</button>
+    </div>
+  </header>
+
+  <!-- Alarm Banner -->
+  <div class="alarm-banner" id="alarm-banner">
+    <span id="first-out-text">ALL PLANT SYSTEMS OPERATING NORMALLY</span>
+    <span id="active-alarm-count">0 ALARMS</span>
+  </div>
+
+  <!-- Main Grid -->
+  <main class="scada-grid">
+    <!-- Left: P&ID Diagram -->
+    <section class="panel">
+      <h2>P&ID DIAGRAM</h2>
+      <div class="pid-container">
+        <svg viewBox="0 0 920 480" class="pid-svg" id="pid-canvas">
+          <!-- Simplified Piping -->
+          <path d="M 690 390 L 150 390 L 150 200 L 170 200" class="pipe-line" />
+          <path d="M 230 110 L 230 70 L 460 70 L 460 170" class="pipe-line" />
+          <path d="M 540 230 L 540 330 L 670 330" class="pipe-line" />
+
+          <!-- Boiler / Furnace -->
+          <rect x="90" y="140" width="160" height="230" class="vessel" />
+          <text x="170" y="165" class="svg-label">BOILER</text>
+          <text x="170" y="325" class="svg-sublabel" id="flame-text">FLAME: ACTIVE</text>
+
+          <!-- Steam Drum -->
+          <ellipse cx="200" cy="110" rx="60" ry="24" class="vessel" />
+          <rect x="142" y="110" width="116" height="24" id="pid-drum-water" fill="#0284c7" opacity="0.5"/>
+          <text x="200" y="114" class="svg-label" id="pid-drum-level-text">50.0% LVL</text>
+
+          <!-- Valves -->
+          <g transform="translate(160, 60)"><polygon points="0,0 16,12 0,24 32,0 16,12 32,24" class="valve-icon" id="icon-safety1"/><text x="16" y="-6" class="svg-tag">SRV-1</text></g>
+          <g transform="translate(370, 58)"><polygon points="0,0 18,12 0,24 36,0 18,12 36,24" class="valve-icon" id="icon-msv"/><text x="18" y="-6" class="svg-tag">MSV</text></g>
+          <text x="494" y="121" class="svg-tag" id="pid-cv-text">CV: 20%</text>
+
+          <!-- Turbine -->
+          <polygon points="460,160 550,180 550,260 460,280" class="vessel" />
+          <text x="505" y="225" class="svg-label">TURBINE</text>
+          <text x="505" y="275" class="svg-sublabel" id="pid-turbine-rpm">3600 RPM</text>
+
+          <!-- Generator -->
+          <circle cx="620" cy="220" r="42" class="vessel" />
+          <text x="620" y="215" class="svg-label">GEN 52G</text>
+          <text x="620" y="235" class="svg-sublabel" id="pid-gen-mw">250 MW</text>
+
+          <!-- Breaker -->
+          <g transform="translate(685, 205)">
+            <rect x="0" y="0" width="32" height="30" class="breaker-housing" />
+            <line x1="8" y1="15" x2="24" y2="15" id="pid-breaker-blade" stroke="#ef4444" stroke-width="4"/>
+            <text x="16" y="44" class="svg-tag" id="pid-breaker-text">52G OPEN</text>
+          </g>
+
+          <!-- Condenser -->
+          <rect x="660" y="320" width="110" height="80" class="vessel" />
+          <text x="715" y="348" class="svg-label">CONDENSER</text>
+          <text x="715" y="368" class="svg-sublabel" id="pid-condenser-vac">28.5 inHg</text>
+
+          <!-- BFP -->
+          <text x="315" y="371" class="svg-tag">BFP</text>
+          <text x="315" y="426" class="svg-sublabel" id="pid-bfp-flow">55 kg/s</text>
+        </svg>
+      </div>
+    </section>
+
+    <!-- Right: Gauges & Controls -->
+    <section class="panel">
+      <div class="metrics-grid">
+        <div class="metric-card">
+          <div class="card-title">STEAM DRUM</div>
+          <div class="metric-value" id="val-drum-press">180.0 <span class="unit">PSI</span></div>
+          <div class="metric-subrow">Temp: <span id="val-drum-temp">192.4 °C</span> | Level: <span id="val-drum-level">50.0 %</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="card-title">TURBINE DEH</div>
+          <div class="metric-value" id="val-turbine-rpm">3600 <span class="unit">RPM</span></div>
+          <div class="metric-subrow">Vib 1: <span id="val-brg1-vib">1.2</span> | Vib 2: <span id="val-brg2-vib">1.4</span> mm/s</div>
+        </div>
+        <div class="metric-card">
+          <div class="card-title">GENERATOR</div>
+          <div class="metric-value" id="val-gen-mw">250.0 <span class="unit">MW</span></div>
+          <div class="metric-subrow">Freq: <span id="val-gen-freq">60.00 Hz</span> | Volt: <span id="val-gen-volt">22.0 kV</span></div>
+        </div>
+        <div class="metric-card">
+          <div class="card-title">CONDENSER & FUEL</div>
+          <div class="metric-value" id="val-cond-vacuum">28.5 <span class="unit">inHg</span></div>
+          <div class="metric-subrow">Fuel: <span id="val-fuel-rate">30.0</span> | O2: <span id="val-flue-o2">3.2 %</span></div>
+        </div>
+      </div>
+
+      <!-- Trend Chart -->
+      <div class="trend-box">
+        <div class="trend-header">
+          <span>TRENDS (Press / Level / MW)</span>
+        </div>
+        <canvas id="trendCanvas" width="600" height="130" class="trend-canvas"></canvas>
+      </div>
+
+      <!-- Controls -->
+      <div class="controls-panel">
+        <div class="controls-header">
+          <span>SETPOINTS</span>
+          <div>
+            <button class="btn btn-sm active" id="btn-mode-auto" onclick="setPlcMode(1)">AUTO</button>
+            <button class="btn btn-sm" id="btn-mode-manual" onclick="setPlcMode(0)">MANUAL</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <label>Target MW: <span id="lbl-mw-val">250</span></label>
+          <div class="control-input-group">
+            <input type="range" id="slider-mw" min="0" max="500" step="10" value="250" oninput="document.getElementById('lbl-mw-val').innerText = this.value">
+            <button class="btn btn-primary btn-sm" onclick="applyTargetMW()">SET</button>
+          </div>
+        </div>
+        <div class="control-row">
+          <label>Target Level (%): <span id="lbl-lvl-val">50</span></label>
+          <div class="control-input-group">
+            <input type="range" id="slider-level" min="20" max="80" step="1" value="50" oninput="document.getElementById('lbl-lvl-val').innerText = this.value">
+            <button class="btn btn-primary btn-sm" onclick="applyTargetLevel()">SET</button>
+          </div>
+        </div>
+        <div class="button-action-row">
+          <button class="btn btn-success" id="btn-breaker-toggle" onclick="toggleBreaker()">TOGGLE 52G BREAKER</button>
+          <button class="btn btn-warning" onclick="toggleSafetyValve()">TOGGLE SRV-1</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Alarm Matrix Footer -->
+  <footer class="annunciator-footer">
+    <div class="annunciator-grid">
+      <div class="annun-tile" id="tile-press-hi">PRESS HI</div>
+      <div class="annun-tile" id="tile-press-hihi">PRESS HI-HI</div>
+      <div class="annun-tile" id="tile-level-lo">LEVEL LO</div>
+      <div class="annun-tile" id="tile-level-lolo">LEVEL LO-LO</div>
+      <div class="annun-tile" id="tile-level-hi">LEVEL HI</div>
+      <div class="annun-tile" id="tile-level-hihi">LEVEL HI-HI</div>
+      <div class="annun-tile" id="tile-flame-fail">FLAME FAIL</div>
+      <div class="annun-tile" id="tile-turb-vib">HIGH VIB</div>
+      <div class="annun-tile" id="tile-turb-speed">OVERSPEED</div>
+      <div class="annun-tile" id="tile-vac-loss">VAC LOSS</div>
+      <div class="annun-tile" id="tile-mft-trip">MFT TRIP</div>
+      <div class="annun-tile" id="tile-ets-trip">ETS TRIP</div>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
