@@ -71,16 +71,19 @@ int main(int argc, char *argv[]) {
     std::vector<uint16_t> plcRegisters(PlantRegisters::TOTAL_REGISTERS, 0);
     std::vector<uint16_t> telemetryRegisters(PlantRegisters::TOTAL_REGISTERS, 0);
 
-    // Default starting plant parameters
-    plcRegisters[PlantRegisters::REG_FD_FAN_SPEED] = 30;
-    plcRegisters[PlantRegisters::REG_ID_FAN_SPEED] = 32;
-    plcRegisters[PlantRegisters::REG_FUEL_FEED_RATE] = 25;
-    plcRegisters[PlantRegisters::REG_MAIN_STEAM_STOP_VALVE] = 1;
-    plcRegisters[PlantRegisters::REG_GOVERNOR_CONTROL_VALVE] = 15;
+    // Default safe cold startup plant parameters
+    plcRegisters[PlantRegisters::REG_BOILER_DRUM_TEMP] = 25;
+    plcRegisters[PlantRegisters::REG_BOILER_DRUM_PRESS] = 15;
+    plcRegisters[PlantRegisters::REG_BOILER_DRUM_LEVEL] = 50;
+    plcRegisters[PlantRegisters::REG_FD_FAN_SPEED] = 20;
+    plcRegisters[PlantRegisters::REG_ID_FAN_SPEED] = 22;
+    plcRegisters[PlantRegisters::REG_FUEL_FEED_RATE] = 0; // Cold initial state: fuel off
+    plcRegisters[PlantRegisters::REG_MAIN_STEAM_STOP_VALVE] = 0;
+    plcRegisters[PlantRegisters::REG_GOVERNOR_CONTROL_VALVE] = 0;
     plcRegisters[PlantRegisters::REG_CIRC_WATER_FLOW] = 70;
-    plcRegisters[PlantRegisters::REG_BFP_A_SPEED] = 35;
+    plcRegisters[PlantRegisters::REG_BFP_A_SPEED] = 0;
     plcRegisters[PlantRegisters::REG_CONDENSATE_PUMP_STATE] = 1;
-    plcRegisters[PlantRegisters::REG_EXCITER_FIELD_CURRENT] = 1000; // 100.0 Amps
+    plcRegisters[PlantRegisters::REG_EXCITER_FIELD_CURRENT] = 1000; // 100.0 Amps nominal standby
 
     double dt = static_cast<double>(tickRateMs) / 1000.0;
 

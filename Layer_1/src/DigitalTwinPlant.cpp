@@ -24,6 +24,12 @@ void DigitalTwinPlant::step(const std::vector<uint16_t> &plcHoldingRegisters,
 
     outTelemetryRegisters = plcHoldingRegisters; // Start from current values
 
+    // Check for simulation reset request from Layer 2 / Layer 3
+    bool resetRequested = (plcHoldingRegisters[PlantRegisters::REG_RESET_SIMULATION_CMD] != 0);
+    if (resetRequested) {
+        resetAll();
+    }
+
     m_heartbeat++;
 
     // 1. EXTRACT ACTUATOR COMMANDS & CONTROLS FROM PLC REGISTERS
@@ -143,4 +149,25 @@ void DigitalTwinPlant::step(const std::vector<uint16_t> &plcHoldingRegisters,
 
     // System Heartbeat
     outTelemetryRegisters[PlantRegisters::REG_WATCHDOG_HEARTBEAT]    = m_heartbeat;
+
+    // Preserve PLC safety, command, and anomaly registers so Layer 1 does not clobber them
+    outTelemetryRegisters[PlantRegisters::REG_MASTER_FUEL_TRIP]         = plcHoldingRegisters[PlantRegisters::REG_MASTER_FUEL_TRIP];
+    outTelemetryRegisters[PlantRegisters::REG_TURBINE_TRIP]             = plcHoldingRegisters[PlantRegisters::REG_TURBINE_TRIP];
+    outTelemetryRegisters[PlantRegisters::REG_GENERATOR_TRIP]           = plcHoldingRegisters[PlantRegisters::REG_GENERATOR_TRIP];
+    outTelemetryRegisters[PlantRegisters::REG_EMERGENCY_SHUTDOWN_CMD]   = plcHoldingRegisters[PlantRegisters::REG_EMERGENCY_SHUTDOWN_CMD];
+    outTelemetryRegisters[PlantRegisters::REG_ALARM_WORD_HIGH]          = plcHoldingRegisters[PlantRegisters::REG_ALARM_WORD_HIGH];
+    outTelemetryRegisters[PlantRegisters::REG_ALARM_WORD_LOW]           = plcHoldingRegisters[PlantRegisters::REG_ALARM_WORD_LOW];
+    outTelemetryRegisters[PlantRegisters::REG_FIRST_OUT_TRIP_CODE]      = plcHoldingRegisters[PlantRegisters::REG_FIRST_OUT_TRIP_CODE];
+    outTelemetryRegisters[PlantRegisters::REG_OPERATOR_TARGET_MW]       = plcHoldingRegisters[PlantRegisters::REG_OPERATOR_TARGET_MW];
+    outTelemetryRegisters[PlantRegisters::REG_OPERATOR_TARGET_DRUM_LVL] = plcHoldingRegisters[PlantRegisters::REG_OPERATOR_TARGET_DRUM_LVL];
+    outTelemetryRegisters[PlantRegisters::REG_PLC_MODE]                 = plcHoldingRegisters[PlantRegisters::REG_PLC_MODE];
+    outTelemetryRegisters[PlantRegisters::REG_ANOMALY_STATUS]           = plcHoldingRegisters[PlantRegisters::REG_ANOMALY_STATUS];
+    outTelemetryRegisters[PlantRegisters::REG_SECURITY_ALERT_LEVEL]     = plcHoldingRegisters[PlantRegisters::REG_SECURITY_ALERT_LEVEL];
+
+    // Clear reset command after completing the reset handshake
+    if (resetRequested) {
+        outTelemetryRegisters[PlantRegisters::REG_RESET_SIMULATION_CMD] = 0;
+    } else {
+        outTelemetryRegisters[PlantRegisters::REG_RESET_SIMULATION_CMD] = plcHoldingRegisters[PlantRegisters::REG_RESET_SIMULATION_CMD];
+    }
 }

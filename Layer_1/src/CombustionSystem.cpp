@@ -9,11 +9,11 @@ CombustionSystem::CombustionSystem() {
 void CombustionSystem::reset() {
     m_effectiveFuelRate = 0.0;
     m_furnacePressure = -10.0; // Nominal -10 mm H2O draft
-    m_flueGasO2 = 21.0;        // Ambient air O2 %
+    m_flueGasO2 = 20.9;        // Ambient air O2 %
     m_airFuelRatio = 1.0;
     m_burnerState = 0;         // Off
     m_flameDetected = false;
-    m_efficiency = 88.0;
+    m_efficiency = 0.0;
     m_heatOutputKW = 0.0;
 }
 

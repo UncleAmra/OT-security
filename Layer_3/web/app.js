@@ -1,245 +1,465 @@
-const MAX_HISTORY = 60;
-const trendHistory = {
-  pressure: [],
-  level: [],
-  mw: []
-};
-
-let currentBreakerState = false;
-let currentSafety1State = false;
-let currentRotorAngle = 0;
+/**
+ * OT POWER PLANT DIGITAL TWIN - SCADA WORKSTATION CONTROLLER
+ * Minimal, reliable, clean SCADA operator logic.
+ */
 
 document.addEventListener('DOMContentLoaded', () => {
+  // Update live UTC clock
   setInterval(updateClock, 1000);
   updateClock();
 
-  document.getElementById('btn-esd').addEventListener('click', () => {
-    if (confirm('CONFIRM EMERGENCY PLANT TRIP?')) {
-      sendCommand('esd');
-    }
-  });
+  // Emergency Stop Button
+  const btnEsd = document.getElementById('btn-esd');
+  if (btnEsd) {
+    btnEsd.addEventListener('click', async () => {
+      if (confirm('CONFIRM EMERGENCY PLANT SHUTDOWN (ESD)?\n\nThis will trigger immediate Master Fuel Trip (MFT) and Turbine Emergency Trip (ETS). Shutdown will be latched.')) {
+        await sendCommand('esd');
+        pollTelemetry();
+      }
+    });
+  }
 
+  // Restart Simulation Button
+  const btnRestart = document.getElementById('btn-restart');
+  if (btnRestart) {
+    btnRestart.addEventListener('click', async () => {
+      if (confirm('CONFIRM RESTART SIMULATION?\n\nThis will reset all process variables, clear trips, reset Modbus registers, and return the plant to a defined safe cold startup condition.')) {
+        await sendCommand('restart');
+        pollTelemetry();
+      }
+    });
+  }
+
+  // High-frequency telemetry polling (3.3 Hz)
   setInterval(pollTelemetry, 300);
   pollTelemetry();
 });
 
 function updateClock() {
   const now = new Date();
-  document.getElementById('scada-clock').innerText = now.toTimeString().split(' ')[0] + ' UTC';
+  const timeStr = now.toTimeString().split(' ')[0] + ' UTC';
+  const el = document.getElementById('scada-clock');
+  if (el) el.innerText = timeStr;
+}
+
+async function sendCommand(cmd, val = 0) {
+  try {
+    const res = await fetch('/api/command', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cmd, val })
+    });
+    return await res.json();
+  } catch (err) {
+    console.error('Command dispatch error:', err);
+    return { success: false };
+  }
 }
 
 async function pollTelemetry() {
   try {
     const res = await fetch('/api/telemetry');
-    if (!res.ok) throw new Error();
+    if (!res.ok) throw new Error('Network error');
     const data = await res.json();
     renderTelemetry(data);
   } catch (err) {
-    document.getElementById('plc-status-text').innerText = 'PLC: DISCONNECTED';
-    document.getElementById('plc-status-text').style.color = '#ef4444';
+    renderOffline();
+  }
+}
+
+function renderOffline() {
+  const linkBadge = document.getElementById('link-status');
+  if (linkBadge) {
+    linkBadge.innerText = 'PLC: OFFLINE';
+    linkBadge.className = 'badge badge-link';
+    linkBadge.style.color = '#ef4444';
+    linkBadge.style.borderColor = '#ef4444';
+  }
+
+  const masterBadge = document.getElementById('master-plant-status');
+  if (masterBadge) {
+    masterBadge.innerText = 'OFFLINE';
+    masterBadge.className = 'status-badge status-offline';
+  }
+
+  const secBadge = document.getElementById('security-alert-badge');
+  if (secBadge) {
+    secBadge.innerText = 'OFFLINE';
+    secBadge.className = 'status-badge status-offline';
   }
 }
 
 function renderTelemetry(data) {
   if (!data || !data.connected) {
-    document.getElementById('plc-status-text').innerText = 'PLC: DISCONNECTED';
+    renderOffline();
     return;
   }
 
-  document.getElementById('plc-status-text').innerText = 'PLC: ONLINE (#' + (data.heartbeat || 0) + ')';
-  document.getElementById('plc-status-text').style.color = '#22c55e';
-
-  const mftPill = document.getElementById('mft-status-text');
-  if (data.safety.mft || data.safety.turbineTrip) {
-    mftPill.innerText = 'SIS: TRIPPED';
-    mftPill.style.color = '#ef4444';
-  } else {
-    mftPill.innerText = 'SIS: HEALTHY';
-    mftPill.style.color = '#22c55e';
+  // 1. Connection & Heartbeat
+  const linkBadge = document.getElementById('link-status');
+  if (linkBadge) {
+    linkBadge.innerText = 'PLC: ONLINE';
+    linkBadge.className = 'badge badge-link';
+    linkBadge.style.color = '#10b981';
+    linkBadge.style.borderColor = '#10b981';
   }
 
-  const gridPill = document.getElementById('grid-status-text');
-  currentBreakerState = (data.generator.breaker === 1);
-  if (currentBreakerState) {
-    gridPill.innerText = 'GRID: SYNC';
-    gridPill.style.color = '#22c55e';
-  } else {
-    gridPill.innerText = 'GRID: OPEN';
-    gridPill.style.color = '#f59e0b';
+  const hbBadge = document.getElementById('scan-heartbeat');
+  if (hbBadge) {
+    hbBadge.innerText = 'HB: #' + (data.heartbeat || 0);
   }
 
-  const banner = document.getElementById('alarm-banner');
-  const firstOutText = document.getElementById('first-out-text');
-  if (data.safety.firstOut > 0) {
-    banner.classList.add('active-trip');
-    firstOutText.innerText = 'TRIP: ' + data.safety.firstOutName;
-  } else {
-    banner.classList.remove('active-trip');
-    firstOutText.innerText = 'ALL PLANT SYSTEMS OPERATING NORMALLY';
-  }
+  // 2. Master Status Calculation
+  const isMft = data.safety && data.safety.mft === 1;
+  const isTurbineTrip = data.safety && data.safety.turbineTrip === 1;
+  const isGenTrip = data.safety && data.safety.genTrip === 1;
+  const isEsd = data.safety && data.safety.esd === 1;
+  const isTripped = isMft || isTurbineTrip || isGenTrip || isEsd;
 
-  document.getElementById('val-drum-press').innerHTML = data.boiler.drumPress.toFixed(1) + ' <span class="unit">PSI</span>';
-  document.getElementById('val-drum-temp').innerText = data.boiler.drumTemp.toFixed(1) + ' °C';
-  document.getElementById('val-drum-level').innerText = data.boiler.drumLevel.toFixed(1) + ' %';
+  const alertLevel = (data.safety && data.safety.securityAlertLevel !== undefined) 
+                     ? data.safety.securityAlertLevel : 0;
+  const alarmLow = (data.safety && data.safety.alarmLow) || 0;
+  const alarmHigh = (data.safety && data.safety.alarmHigh) || 0;
+  const hasCriticalAlarm = (alarmLow & (1 << 1)) || (alarmLow & (1 << 3)) || 
+                           (alarmLow & (1 << 5)) || (alarmLow & (1 << 10)) || (alarmLow & (1 << 12));
+  const hasWarningAlarm = (alarmLow !== 0) || (alarmHigh !== 0);
 
-  document.getElementById('val-turbine-rpm').innerHTML = Math.round(data.turbine.rpm) + ' <span class="unit">RPM</span>';
-  document.getElementById('val-brg1-vib').innerText = data.turbine.brg1Vib.toFixed(2);
-  document.getElementById('val-brg2-vib').innerText = data.turbine.brg2Vib.toFixed(2);
-
-  document.getElementById('val-gen-mw').innerHTML = data.generator.mw.toFixed(1) + ' <span class="unit">MW</span>';
-  document.getElementById('val-gen-freq').innerText = data.generator.freq.toFixed(2) + ' Hz';
-  document.getElementById('val-gen-volt').innerText = data.generator.volt.toFixed(1) + ' kV';
-
-  document.getElementById('val-cond-vacuum').innerHTML = data.condenser.vacuum.toFixed(1) + ' <span class="unit">inHg</span>';
-  document.getElementById('val-fuel-rate').innerText = data.combustion.fuelRate.toFixed(1);
-  document.getElementById('val-flue-o2').innerText = data.combustion.flueGasO2.toFixed(1) + ' %';
-
-  const waterLevel = Math.max(0, Math.min(100, data.boiler.drumLevel));
-  const waterHeight = (waterLevel / 100.0) * 24;
-  const drumWater = document.getElementById('pid-drum-water');
-  drumWater.setAttribute('y', 110 + (24 - waterHeight));
-  drumWater.setAttribute('height', waterHeight);
-  document.getElementById('pid-drum-level-text').innerText = waterLevel.toFixed(1) + '% LVL';
-
-  const flameEl = document.getElementById('flame-text');
-  if (data.combustion.flame === 1) {
-    flameEl.innerText = 'FLAME: ON';
-    flameEl.style.fill = '#22c55e';
-  } else {
-    flameEl.innerText = 'FLAME: OFF';
-    flameEl.style.fill = '#ef4444';
-  }
-
-  currentSafety1State = (data.boiler.safety1 === 1);
-  document.getElementById('icon-safety1').style.fill = currentSafety1State ? '#ef4444' : '#22c55e';
-  document.getElementById('pid-cv-text').innerText = 'CV: ' + data.turbine.cv + '%';
-  document.getElementById('pid-turbine-rpm').innerText = Math.round(data.turbine.rpm) + ' RPM';
-
-  const breakerBlade = document.getElementById('pid-breaker-blade');
-  const breakerText = document.getElementById('pid-breaker-text');
-  if (currentBreakerState) {
-    breakerBlade.setAttribute('y1', '15');
-    breakerBlade.setAttribute('y2', '15');
-    breakerBlade.setAttribute('stroke', '#22c55e');
-    breakerText.innerText = '52G CLOSED';
-  } else {
-    breakerBlade.setAttribute('y1', '5');
-    breakerBlade.setAttribute('y2', '15');
-    breakerBlade.setAttribute('stroke', '#ef4444');
-    breakerText.innerText = '52G OPEN';
-  }
-
-  document.getElementById('pid-condenser-vac').innerText = data.condenser.vacuum.toFixed(1) + ' inHg';
-  document.getElementById('pid-bfp-flow').innerText = data.boiler.feedFlow.toFixed(1) + ' kg/s';
-
-  trendHistory.pressure.push(data.boiler.drumPress);
-  trendHistory.level.push(data.boiler.drumLevel);
-  trendHistory.mw.push(data.generator.mw);
-
-  if (trendHistory.pressure.length > MAX_HISTORY) trendHistory.pressure.shift();
-  if (trendHistory.level.length > MAX_HISTORY) trendHistory.level.shift();
-  if (trendHistory.mw.length > MAX_HISTORY) trendHistory.mw.shift();
-
-  drawTrendChart();
-  updateAnnunciator(data.safety.alarmLow, data.safety.alarmHigh);
-}
-
-function drawTrendChart() {
-  const canvas = document.getElementById('trendCanvas');
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width;
-  const h = canvas.height;
-
-  ctx.clearRect(0, 0, w, h);
-
-  ctx.strokeStyle = '#111';
-  ctx.lineWidth = 1;
-  for (let y = 0; y < h; y += 25) {
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
-  }
-
-  const n = trendHistory.pressure.length;
-  if (n < 2) return;
-
-  function plotSeries(arr, maxVal, color) {
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    for (let i = 0; i < n; i++) {
-      const x = (i / (MAX_HISTORY - 1)) * w;
-      const y = h - (arr[i] / maxVal) * (h - 10) - 5;
-      if (i === 0) ctx.moveTo(x, y);
-      else ctx.lineTo(x, y);
+  const masterBadge = document.getElementById('master-plant-status');
+  if (masterBadge) {
+    if (isTripped) {
+      masterBadge.innerText = 'TRIPPED';
+      masterBadge.className = 'status-badge status-tripped';
+    } else if (alertLevel === 2 || hasCriticalAlarm) {
+      masterBadge.innerText = 'CRITICAL';
+      masterBadge.className = 'status-badge status-critical';
+    } else if (alertLevel === 1 || hasWarningAlarm) {
+      masterBadge.innerText = 'WARNING';
+      masterBadge.className = 'status-badge status-warning';
+    } else {
+      masterBadge.innerText = 'NORMAL';
+      masterBadge.className = 'status-badge status-normal';
     }
-    ctx.stroke();
   }
 
-  plotSeries(trendHistory.pressure, 220, '#38bdf8');
-  plotSeries(trendHistory.level, 100, '#22c55e');
-  plotSeries(trendHistory.mw, 500, '#f59e0b');
+  // 3. Security Threat Badge
+  const secBadge = document.getElementById('security-alert-badge');
+  if (secBadge) {
+    if (alertLevel === 3 || isTripped) {
+      secBadge.innerText = 'TRIPPED / SHUTDOWN';
+      secBadge.className = 'status-badge status-tripped';
+    } else if (alertLevel === 2) {
+      secBadge.innerText = 'ATTACK / ANOMALY DETECTED';
+      secBadge.className = 'status-badge status-critical';
+    } else if (alertLevel === 1) {
+      secBadge.innerText = 'WARNING / ELEVATED';
+      secBadge.className = 'status-badge status-warning';
+    } else {
+      secBadge.innerText = 'NORMAL (HEALTHY)';
+      secBadge.className = 'status-badge status-normal';
+    }
+  }
+
+  // 4. First-Out Banner
+  const firstOutText = document.getElementById('first-out-text');
+  const firstOutName = (data.safety && data.safety.firstOutName) || 'NONE';
+  if (firstOutText) {
+    if (data.safety && data.safety.firstOut > 0) {
+      firstOutText.innerText = 'TRIP: ' + firstOutName;
+      firstOutText.className = 'first-out-val active-trip';
+    } else {
+      firstOutText.innerText = 'ALL PLANT SYSTEMS NORMAL';
+      firstOutText.className = 'first-out-val';
+    }
+  }
+
+  // 5. Boiler Card Telemetry
+  const b = data.boiler || {};
+  setVal('val-drum-temp', b.drumTemp ? b.drumTemp.toFixed(1) : '25.0', '&deg;C');
+  setVal('val-drum-press', b.drumPress ? b.drumPress.toFixed(1) : '14.7', 'PSI');
+  setVal('val-drum-level', b.drumLevel ? b.drumLevel.toFixed(1) : '50.0', '%');
+  setVal('val-superheat-temp', b.superheatTemp ? b.superheatTemp.toFixed(1) : '25.0', '&deg;C');
+  setVal('val-steam-flow', b.steamFlow ? b.steamFlow.toFixed(1) : '0.0', 'kg/s');
+  setVal('val-feed-flow', b.feedFlow ? b.feedFlow.toFixed(1) : '0.0', 'kg/s');
+
+  const srv1 = b.safety1 === 1 ? '<span style="color:#ef4444;font-weight:800;">OPEN (VENTING)</span>' : '<span style="color:#10b981;">CLOSED</span>';
+  const srv2 = b.safety2 === 1 ? '<span style="color:#ef4444;font-weight:800;">OPEN (VENTING)</span>' : '<span style="color:#10b981;">CLOSED</span>';
+  setHtml('val-safety-valves', 'SRV-1: ' + srv1 + ' | SRV-2: ' + srv2);
+
+  const boilerPill = document.getElementById('boiler-status-pill');
+  if (boilerPill) {
+    if (b.drumPress >= 190.0 || isMft) {
+      boilerPill.innerText = 'TRIPPED';
+      boilerPill.style.color = '#ef4444';
+      boilerPill.style.borderColor = '#ef4444';
+    } else if (b.drumPress > 175.0 || b.drumLevel < 35.0 || b.drumLevel > 65.0) {
+      boilerPill.innerText = 'WARNING';
+      boilerPill.style.color = '#f59e0b';
+      boilerPill.style.borderColor = '#f59e0b';
+    } else if (b.drumPress >= 100.0) {
+      boilerPill.innerText = 'OPERATING';
+      boilerPill.style.color = '#10b981';
+      boilerPill.style.borderColor = '#10b981';
+    } else {
+      boilerPill.innerText = 'WARMING UP';
+      boilerPill.style.color = '#06b6d4';
+      boilerPill.style.borderColor = '#06b6d4';
+    }
+  }
+
+  // 6. Combustion Card Telemetry
+  const c = data.combustion || {};
+  let burnerStateStr = 'OFF';
+  if (c.burnerState === 1) burnerStateStr = 'IGNITING';
+  if (c.burnerState === 2) burnerStateStr = 'FIRING (ACTIVE)';
+  setText('val-burner-state', burnerStateStr);
+
+  const flameEl = document.getElementById('val-flame-status');
+  if (flameEl) {
+    if (c.flame === 1) {
+      flameEl.innerText = 'FLAME PRESENT';
+      flameEl.style.color = '#10b981';
+    } else {
+      flameEl.innerText = 'DARK / NO FLAME';
+      flameEl.style.color = '#94a3b8';
+    }
+  }
+
+  setVal('val-fuel-rate', c.fuelRate ? c.fuelRate.toFixed(1) : '0.0', 'kg/min');
+  setVal('val-furnace-press', c.furnacePress ? c.furnacePress.toFixed(1) : '-10.0', 'mm H2O');
+  setVal('val-flue-o2', c.flueGasO2 ? c.flueGasO2.toFixed(1) : '20.9', '%');
+  setVal('val-comb-eff', c.efficiency ? c.efficiency.toFixed(1) : '0.0', '%');
+  setText('val-fans-state', 'FD: ' + (c.fdFan || 0) + '% | ID: ' + (c.idFan || 0) + '%');
+
+  const combPill = document.getElementById('combustion-status-pill');
+  if (combPill) {
+    if (isMft) {
+      combPill.innerText = 'MFT TRIP';
+      combPill.style.color = '#ef4444';
+      combPill.style.borderColor = '#ef4444';
+    } else if (c.burnerState === 2) {
+      combPill.innerText = 'FIRING';
+      combPill.style.color = '#10b981';
+      combPill.style.borderColor = '#10b981';
+    } else {
+      combPill.innerText = 'STANDBY';
+      combPill.style.color = '#94a3b8';
+      combPill.style.borderColor = '#334155';
+    }
+  }
+
+  // 7. Turbine Card Telemetry
+  const t = data.turbine || {};
+  setVal('val-turbine-rpm', t.rpm ? Math.round(t.rpm).toString() : '0', 'RPM');
+  setVal('val-brg1-vib', t.brg1Vib ? t.brg1Vib.toFixed(2) : '0.00', 'mm/s');
+  setVal('val-brg2-vib', t.brg2Vib ? t.brg2Vib.toFixed(2) : '0.00', 'mm/s');
+  setVal('val-lube-press', t.lubeOilPress ? t.lubeOilPress.toFixed(1) : '0.0', 'Bar');
+  setVal('val-lube-temp', t.lubeOilTemp ? t.lubeOilTemp.toFixed(1) : '25.0', '&deg;C');
+  setVal('val-chest-temp', t.chestTemp ? t.chestTemp.toFixed(1) : '25.0', '&deg;C');
+
+  const msvStr = t.msv === 1 ? '<span style="color:#10b981;">OPEN</span>' : '<span style="color:#94a3b8;">CLOSED</span>';
+  setHtml('val-turbine-valves', 'MSV: ' + msvStr + ' | CV: ' + (t.cv || 0) + '%');
+
+  const turbPill = document.getElementById('turbine-status-pill');
+  if (turbPill) {
+    if (isTurbineTrip || t.tripped === 1) {
+      turbPill.innerText = 'ETS TRIPPED';
+      turbPill.style.color = '#ef4444';
+      turbPill.style.borderColor = '#ef4444';
+    } else if (t.rpm >= 3708 || t.brg1Vib > 3.0 || t.brg2Vib > 3.0) {
+      turbPill.innerText = 'WARNING';
+      turbPill.style.color = '#f59e0b';
+      turbPill.style.borderColor = '#f59e0b';
+    } else if (t.rpm >= 3550) {
+      turbPill.innerText = 'SYNCHRONOUS (3600 RPM)';
+      turbPill.style.color = '#10b981';
+      turbPill.style.borderColor = '#10b981';
+    } else if (t.rpm > 100) {
+      turbPill.innerText = 'ROLLING UP';
+      turbPill.style.color = '#06b6d4';
+      turbPill.style.borderColor = '#06b6d4';
+    } else {
+      turbPill.innerText = 'STANDBY / STOPPED';
+      turbPill.style.color = '#94a3b8';
+      turbPill.style.borderColor = '#334155';
+    }
+  }
+
+  // 8. Generator Card Telemetry
+  const g = data.generator || {};
+  setVal('val-gen-mw', g.mw ? g.mw.toFixed(1) : '0.0', 'MW');
+  setVal('val-gen-freq', g.freq ? g.freq.toFixed(2) : '0.00', 'Hz');
+  setVal('val-gen-volt', g.volt ? g.volt.toFixed(1) : '0.0', 'kV');
+  setVal('val-power-factor', g.powerFactor ? g.powerFactor.toFixed(2) : '1.00', '');
+  setVal('val-stator-temp', g.statorTemp ? g.statorTemp.toFixed(1) : '25.0', '&deg;C');
+
+  const breakerEl = document.getElementById('val-breaker-state');
+  if (breakerEl) {
+    if (g.breaker === 1) {
+      breakerEl.innerText = 'CLOSED (GRID TIED)';
+      breakerEl.style.color = '#10b981';
+    } else {
+      breakerEl.innerText = 'OPEN (ISOLATED)';
+      breakerEl.style.color = '#f59e0b';
+    }
+  }
+
+  const syncEl = document.getElementById('val-sync-permit');
+  if (syncEl) {
+    if (g.syncPermit === 1) {
+      syncEl.innerText = 'PERMITTED';
+      syncEl.style.color = '#10b981';
+    } else {
+      syncEl.innerText = 'LOCKED';
+      syncEl.style.color = '#94a3b8';
+    }
+  }
+
+  const genPill = document.getElementById('generator-status-pill');
+  if (genPill) {
+    if (isGenTrip) {
+      genPill.innerText = '86G TRIPPED';
+      genPill.style.color = '#ef4444';
+      genPill.style.borderColor = '#ef4444';
+    } else if (g.breaker === 1) {
+      genPill.innerText = 'ON-LINE (' + (g.mw ? g.mw.toFixed(0) : '0') + ' MW)';
+      genPill.style.color = '#10b981';
+      genPill.style.borderColor = '#10b981';
+    } else {
+      genPill.innerText = 'OFF-LINE';
+      genPill.style.color = '#94a3b8';
+      genPill.style.borderColor = '#334155';
+    }
+  }
+
+  // 9. Condenser Card Telemetry
+  const cd = data.condenser || {};
+  setVal('val-cond-vacuum', cd.vacuum ? cd.vacuum.toFixed(1) : '28.5', 'inHg');
+  setVal('val-hotwell-temp', cd.hotwellTemp ? cd.hotwellTemp.toFixed(1) : '25.0', '&deg;C');
+  setVal('val-circ-flow', cd.circFlow ? cd.circFlow.toFixed(1) : '70.0', '%');
+  setVal('val-bfp-a', cd.bfpA ? cd.bfpA.toFixed(1) : '0.0', '%');
+  setVal('val-bfp-b', cd.bfpB ? cd.bfpB.toFixed(1) : '0.0', '%');
+  setText('val-cep-state', cd.cepState === 1 ? 'RUNNING' : 'STOPPED');
+  setText('val-deaerator-state', 'Level: ' + (cd.deaeratorLevel || 60) + '% | Press: 1.2 Bar');
+
+  const condPill = document.getElementById('condenser-status-pill');
+  if (condPill) {
+    if (cd.vacuum < 8.0 && t.rpm > 500) {
+      condPill.innerText = 'TRIPPED';
+      condPill.style.color = '#ef4444';
+      condPill.style.borderColor = '#ef4444';
+    } else if (cd.vacuum < 18.0) {
+      condPill.innerText = 'POOR VACUUM';
+      condPill.style.color = '#f59e0b';
+      condPill.style.borderColor = '#f59e0b';
+    } else {
+      condPill.innerText = 'HEALTHY';
+      condPill.style.color = '#10b981';
+      condPill.style.borderColor = '#10b981';
+    }
+  }
+
+  // 10. Security & Anomaly Monitor Card
+  const anomBits = (data.safety && data.safety.anomalyStatus) || 0;
+  const anomMsgEl = document.getElementById('anomaly-message');
+  if (anomMsgEl) {
+    let anomList = [];
+    if (anomBits & (1 << 0)) anomList.push('RAPID FUEL MANIPULATION DETECTED');
+    if (anomBits & (1 << 1)) anomList.push('BOILER OVERPRESSURE DISPARITY');
+    if (anomBits & (1 << 2)) anomList.push('MASS BALANCE VIOLATION (DRUM LOSS)');
+    if (anomBits & (1 << 3)) anomList.push('TURBINE RUNAWAY ACCELERATION');
+    if (anomBits & (1 << 4)) anomList.push('COOLING WATER COLLAPSE DETECTED');
+    if (anomBits & (1 << 5)) anomList.push('SENSOR SPOOFING / PHYSICAL INCONSISTENCY');
+
+    if (anomList.length > 0) {
+      anomMsgEl.innerText = anomList.join(' | ');
+      anomMsgEl.className = 'anomaly-message anomaly-active';
+    } else {
+      anomMsgEl.innerText = 'NO DETECTED THREATS OR ANOMALIES';
+      anomMsgEl.className = 'anomaly-message';
+    }
+  }
+
+  const mftStateEl = document.getElementById('val-mft-state');
+  if (mftStateEl) {
+    mftStateEl.innerText = isMft ? 'TRIPPED (FUEL CUTOFF)' : 'HEALTHY';
+    mftStateEl.style.color = isMft ? '#ef4444' : '#10b981';
+  }
+
+  const etsStateEl = document.getElementById('val-ets-state');
+  if (etsStateEl) {
+    etsStateEl.innerText = isTurbineTrip ? 'TRIPPED (VALVES SHUT)' : 'HEALTHY';
+    etsStateEl.style.color = isTurbineTrip ? '#ef4444' : '#10b981';
+  }
+
+  const esdLatchEl = document.getElementById('val-esd-latch');
+  if (esdLatchEl) {
+    esdLatchEl.innerText = isEsd ? 'SHUTDOWN LATCHED' : 'NORMAL';
+    esdLatchEl.style.color = isEsd ? '#ef4444' : '#10b981';
+  }
+
+  const plcModeEl = document.getElementById('val-plc-mode');
+  if (plcModeEl) {
+    const mode = data.plcMode || 1;
+    plcModeEl.innerText = mode === 1 ? 'AUTO / CASCADE REGULATION' : 'MANUAL OVERRIDE MODE';
+  }
+
+  const sisPill = document.getElementById('sis-status-pill');
+  if (sisPill) {
+    if (isTripped) {
+      sisPill.innerText = 'TRIPPED';
+      sisPill.style.color = '#ef4444';
+      sisPill.style.borderColor = '#ef4444';
+    } else if (alertLevel > 0) {
+      sisPill.innerText = 'ALERT';
+      sisPill.style.color = '#f59e0b';
+      sisPill.style.borderColor = '#f59e0b';
+    } else {
+      sisPill.innerText = 'HEALTHY';
+      sisPill.style.color = '#10b981';
+      sisPill.style.borderColor = '#10b981';
+    }
+  }
+
+  // 11. Annunciator Matrix
+  updateAnnunciator(alarmLow, alarmHigh, isEsd);
 }
 
-function updateAnnunciator(low, high) {
-  let count = 0;
-  function setTile(id, active) {
+function updateAnnunciator(low, high, isEsd) {
+  function setTile(id, active, isTrip = true) {
     const el = document.getElementById(id);
     if (!el) return;
     if (active) {
-      el.classList.add('active-alarm');
-      count++;
+      el.className = isTrip ? 'annun-tile active-alarm' : 'annun-tile active-warn';
     } else {
-      el.classList.remove('active-alarm');
+      el.className = 'annun-tile';
     }
   }
 
-  setTile('tile-press-hi', (low & (1 << 0)) !== 0);
-  setTile('tile-press-hihi', (low & (1 << 1)) !== 0);
-  setTile('tile-level-lo', (low & (1 << 2)) !== 0);
-  setTile('tile-level-lolo', (low & (1 << 3)) !== 0);
-  setTile('tile-level-hi', (low & (1 << 4)) !== 0);
-  setTile('tile-level-hihi', (low & (1 << 5)) !== 0);
-  setTile('tile-flame-fail', (low & (1 << 8)) !== 0);
-  setTile('tile-turb-vib', (low & (1 << 10)) !== 0);
-  setTile('tile-turb-speed', (low & (1 << 12)) !== 0);
-  setTile('tile-vac-loss', (low & (1 << 14)) !== 0);
-  setTile('tile-mft-trip', (high & (1 << 0)) !== 0);
-  setTile('tile-ets-trip', (high & (1 << 1)) !== 0);
-
-  document.getElementById('active-alarm-count').innerText = count + ' ALARMS';
+  setTile('tile-press-hi', (low & (1 << 0)) !== 0, false);
+  setTile('tile-press-hihi', (low & (1 << 1)) !== 0, true);
+  setTile('tile-level-lo', (low & (1 << 2)) !== 0, false);
+  setTile('tile-level-lolo', (low & (1 << 3)) !== 0, true);
+  setTile('tile-level-hi', (low & (1 << 4)) !== 0, false);
+  setTile('tile-level-hihi', (low & (1 << 5)) !== 0, true);
+  setTile('tile-flame-fail', (low & (1 << 8)) !== 0, true);
+  setTile('tile-turb-vib', (low & (1 << 10)) !== 0, true);
+  setTile('tile-turb-speed', (low & (1 << 12)) !== 0, true);
+  setTile('tile-vac-loss', (low & (1 << 14)) !== 0, true);
+  setTile('tile-mft-active', (high & (1 << 0)) !== 0, true);
+  setTile('tile-esd-latched', isEsd, true);
 }
 
-async function sendCommand(cmd, val = 0) {
-  try {
-    await fetch('/api/command', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ cmd, val })
-    });
-  } catch (err) {}
+function setText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.innerText = text;
 }
 
-function applyTargetMW() {
-  sendCommand('target_mw', parseInt(document.getElementById('slider-mw').value, 10));
+function setHtml(id, html) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = html;
 }
 
-function applyTargetLevel() {
-  sendCommand('target_level', parseInt(document.getElementById('slider-level').value, 10));
-}
-
-function toggleBreaker() {
-  sendCommand('breaker', currentBreakerState ? 0 : 1);
-}
-
-function toggleSafetyValve() {
-  sendCommand('safety_valve', currentSafety1State ? 0 : 1);
-}
-
-function setPlcMode(mode) {
-  sendCommand('mode', mode);
-  document.getElementById('btn-mode-auto').classList.toggle('active', mode === 1);
-  document.getElementById('btn-mode-manual').classList.toggle('active', mode === 0);
+function setVal(id, val, unit) {
+  const el = document.getElementById(id);
+  if (el) el.innerHTML = val + ' <span class="m-unit">' + unit + '</span>';
 }

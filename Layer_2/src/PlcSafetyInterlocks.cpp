@@ -13,6 +13,10 @@ void PlcSafetyInterlocks::reset() {
     m_alarmLow = 0;
     m_alarmHigh = 0;
     m_startupGraceCounter = 0;
+    m_anomalyStatus = 0;
+    m_alertLevel = PlantRegisters::SecurityAlertLevel::NORMAL;
+    m_prevFuelRate = 0;
+    m_prevTurbineRPM = 0;
 }
 
 void PlcSafetyInterlocks::recordFirstOut(uint16_t tripCode) {
@@ -33,8 +37,70 @@ void PlcSafetyInterlocks::resetTrips() {
     reset();
 }
 
+void PlcSafetyInterlocks::evaluateAnomalies(const std::vector<uint16_t> &reg) {
+    m_anomalyStatus = PlantRegisters::AnomalyBits::NONE;
+
+    uint16_t fuelRate    = reg[PlantRegisters::REG_FUEL_FEED_RATE];
+    uint16_t drumPress   = reg[PlantRegisters::REG_BOILER_DRUM_PRESS];
+    uint16_t drumTemp    = reg[PlantRegisters::REG_BOILER_DRUM_TEMP];
+    uint16_t drumLevel   = reg[PlantRegisters::REG_BOILER_DRUM_LEVEL];
+    uint16_t steamFlow   = reg[PlantRegisters::REG_STEAM_MASS_FLOW];
+    uint16_t feedFlow    = reg[PlantRegisters::REG_FEEDWATER_MASS_FLOW];
+    uint16_t turbineRPM  = reg[PlantRegisters::REG_TURBINE_SPEED_RPM];
+    uint16_t circFlow    = reg[PlantRegisters::REG_CIRC_WATER_FLOW];
+
+    // 1. Rapid Fuel Injection / Manipulation
+    if (m_startupGraceCounter > 20 && std::abs(static_cast<int>(fuelRate) - static_cast<int>(m_prevFuelRate)) >= 25) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::RAPID_FUEL_MANIPULATION;
+    }
+
+    // 2. Pressure / Temperature Physical Disparity (overfiring or sensor spoofing)
+    if (drumPress > 170 && drumTemp < 140) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::SENSOR_SPOOFING_INCONSISTENCY;
+    } else if (drumPress >= 175) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::PRESSURE_TEMP_DISPARITY;
+    }
+
+    // 3. Mass Balance Violation (High steam out, zero feed in, low level)
+    if (steamFlow > 25 && feedFlow < 5 && drumLevel < 40) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::MASS_BALANCE_IMBALANCE;
+    }
+
+    // 4. Turbine Speed Runaway
+    if (turbineRPM >= 3708 || (turbineRPM > 3620 && turbineRPM > m_prevTurbineRPM + 20)) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::TURBINE_SPEED_RUNAWAY;
+    }
+
+    // 5. Cooling Water Collapse while Turbine Operating
+    if (turbineRPM > 500 && circFlow < 15) {
+        m_anomalyStatus |= PlantRegisters::AnomalyBits::COOLING_WATER_COLLAPSE;
+    }
+
+    m_prevFuelRate = fuelRate;
+    m_prevTurbineRPM = turbineRPM;
+
+    // Determine overall Security Alert Level
+    if (m_mftActive || m_turbineTripActive || m_generatorTripActive) {
+        m_alertLevel = PlantRegisters::SecurityAlertLevel::TRIPPED;
+    } else if (m_anomalyStatus != 0 || (m_alarmLow & (PlantRegisters::AlarmLowBits::BOILER_PRESS_HI_HI |
+                                                      PlantRegisters::AlarmLowBits::TURBINE_OVERSPEED_TRIP |
+                                                      PlantRegisters::AlarmLowBits::TURBINE_VIBRATION_TRIP))) {
+        m_alertLevel = PlantRegisters::SecurityAlertLevel::CRITICAL;
+    } else if (m_alarmLow != 0 || m_alarmHigh != 0) {
+        m_alertLevel = PlantRegisters::SecurityAlertLevel::WARNING;
+    } else {
+        m_alertLevel = PlantRegisters::SecurityAlertLevel::NORMAL;
+    }
+}
+
 void PlcSafetyInterlocks::evaluate(std::vector<uint16_t> &reg) {
     if (reg.size() < PlantRegisters::TOTAL_REGISTERS) return;
+
+    // Check for Simulation Reset command
+    if (reg[PlantRegisters::REG_RESET_SIMULATION_CMD] != 0) {
+        resetTrips();
+        reg[PlantRegisters::REG_EMERGENCY_SHUTDOWN_CMD] = 0;
+    }
 
     m_alarmLow = 0;
     m_alarmHigh = 0;
@@ -167,11 +233,16 @@ void PlcSafetyInterlocks::evaluate(std::vector<uint16_t> &reg) {
         m_alarmHigh |= PlantRegisters::AlarmHighBits::GENERATOR_TRIP_ACTIVE;
     }
 
-    // Update registers with computed safety states
-    reg[PlantRegisters::REG_MASTER_FUEL_TRIP]    = m_mftActive ? 1 : 0;
-    reg[PlantRegisters::REG_TURBINE_TRIP]        = m_turbineTripActive ? 1 : 0;
-    reg[PlantRegisters::REG_GENERATOR_TRIP]      = m_generatorTripActive ? 1 : 0;
-    reg[PlantRegisters::REG_FIRST_OUT_TRIP_CODE] = m_firstOutCode;
-    reg[PlantRegisters::REG_ALARM_WORD_LOW]      = m_alarmLow;
-    reg[PlantRegisters::REG_ALARM_WORD_HIGH]     = m_alarmHigh;
+    // Evaluate security anomalies and threats
+    evaluateAnomalies(reg);
+
+    // Update registers with computed safety and security states
+    reg[PlantRegisters::REG_MASTER_FUEL_TRIP]     = m_mftActive ? 1 : 0;
+    reg[PlantRegisters::REG_TURBINE_TRIP]         = m_turbineTripActive ? 1 : 0;
+    reg[PlantRegisters::REG_GENERATOR_TRIP]       = m_generatorTripActive ? 1 : 0;
+    reg[PlantRegisters::REG_FIRST_OUT_TRIP_CODE]  = m_firstOutCode;
+    reg[PlantRegisters::REG_ALARM_WORD_LOW]       = m_alarmLow;
+    reg[PlantRegisters::REG_ALARM_WORD_HIGH]      = m_alarmHigh;
+    reg[PlantRegisters::REG_ANOMALY_STATUS]       = m_anomalyStatus;
+    reg[PlantRegisters::REG_SECURITY_ALERT_LEVEL] = m_alertLevel;
 }

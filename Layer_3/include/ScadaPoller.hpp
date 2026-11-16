@@ -37,6 +37,7 @@ public:
     // Operator commands
     bool sendWriteRegister(uint16_t address, uint16_t value);
     bool triggerEmergencyShutdown();
+    bool restartSimulation();
     bool setTargetMegawatts(uint16_t targetMW);
     bool setTargetDrumLevel(uint16_t targetLevel);
     bool setBreakerState(bool closed);

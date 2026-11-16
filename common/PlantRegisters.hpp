@@ -108,9 +108,29 @@ namespace PlantRegisters {
     constexpr uint16_t REG_OPERATOR_TARGET_DRUM_LVL = 58;  // Operator Command: Target Drum Level (% Setpoint) [default 50]
     constexpr uint16_t REG_WATCHDOG_HEARTBEAT       = 59;  // Telemetry: Incrementing Scan Heartbeat Counter
     constexpr uint16_t REG_PLC_MODE                 = 60;  // Status: PLC Mode (0=Manual, 1=Auto/Cascade, 2=Maintenance)
-    constexpr uint16_t REG_RESERVED_61              = 61;  // Reserved
-    constexpr uint16_t REG_RESERVED_62              = 62;  // Reserved
-    constexpr uint16_t REG_RESERVED_63              = 63;  // Reserved
+    constexpr uint16_t REG_ANOMALY_STATUS           = 61;  // Security: Detected Anomaly Bitmask (see AnomalyBits)
+    constexpr uint16_t REG_SECURITY_ALERT_LEVEL     = 62;  // Security: Overall Security Alert Level (0=NORMAL, 1=WARNING, 2=CRITICAL, 3=TRIPPED)
+    constexpr uint16_t REG_RESET_SIMULATION_CMD     = 63;  // Command: Restart/Reset Simulation Request (1=Reset, 0=Idle)
+
+    // -------------------------------------------------------------------------
+    // SECURITY & ANOMALY DETECTION BITMASKS (Stored in REG_ANOMALY_STATUS)
+    // -------------------------------------------------------------------------
+    namespace AnomalyBits {
+        constexpr uint16_t NONE                         = 0;
+        constexpr uint16_t RAPID_FUEL_MANIPULATION      = (1 << 0); // Fuel rate abruptly spiked or manipulated
+        constexpr uint16_t PRESSURE_TEMP_DISPARITY      = (1 << 1); // Pressure/temp divergence (boiler overfire / sensor spoof)
+        constexpr uint16_t MASS_BALANCE_IMBALANCE       = (1 << 2); // Drum level vs feedwater/steam flow violation
+        constexpr uint16_t TURBINE_SPEED_RUNAWAY        = (1 << 3); // Turbine rate-of-rise exceeds safe acceleration
+        constexpr uint16_t COOLING_WATER_COLLAPSE       = (1 << 4); // Sudden loss of circulating water / vacuum
+        constexpr uint16_t SENSOR_SPOOFING_INCONSISTENCY = (1 << 5); // Inconsistent sensor readings detected
+    }
+
+    namespace SecurityAlertLevel {
+        constexpr uint16_t NORMAL   = 0;
+        constexpr uint16_t WARNING  = 1;
+        constexpr uint16_t CRITICAL = 2;
+        constexpr uint16_t TRIPPED  = 3;
+    }
 
     // -------------------------------------------------------------------------
     // FIRST-OUT ROOT CAUSE CODES (Stored in REG_FIRST_OUT_TRIP_CODE)

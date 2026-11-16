@@ -38,6 +38,9 @@ public:
     void triggerManualEsd();
     void resetTrips();
 
+    uint16_t getAnomalyStatus() const { return m_anomalyStatus; }
+    uint16_t getSecurityAlertLevel() const { return m_alertLevel; }
+
 private:
     bool     m_mftActive;
     bool     m_turbineTripActive;
@@ -47,7 +50,13 @@ private:
     uint16_t m_alarmHigh;
     uint32_t m_startupGraceCounter;
 
+    uint16_t m_anomalyStatus;
+    uint16_t m_alertLevel;
+    uint16_t m_prevFuelRate;
+    uint16_t m_prevTurbineRPM;
+
     void recordFirstOut(uint16_t tripCode);
+    void evaluateAnomalies(const std::vector<uint16_t> &reg);
 };
 
 #endif // PLC_SAFETY_INTERLOCKS_HPP

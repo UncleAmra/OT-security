@@ -31,45 +31,53 @@ void TurbineSystem::step(double boilerPressure, double condenserPressure, bool m
     cvPosition = std::clamp(cvPosition, 0.0, 100.0);
 
     // 2. Steam Inflow Calculation
-    if (!m_isTripped && msvOpen && cvPosition > 0.5) {
-        // Differential pressure driving steam across turbine stages (Boiler Pressure minus condenser backpressure)
-        double deltaP = boilerPressure - (30.0 - condenserPressure) * 0.491; // Convert inHg to PSI
-        if (deltaP < 0.0) deltaP = 0.0;
+    if (!m_isTripped && msvOpen && cvPosition > 0.5 && boilerPressure > 20.0) {
+        // Differential pressure driving steam across turbine stages
+        double pressureRatio = (boilerPressure - 14.7) / 140.0;
+        pressureRatio = std::clamp(pressureRatio, 0.0, 1.5);
 
-        // Mass flow proportional to throttle opening and square root of pressure ratio
-        double maxCapacity = 160.0; // kg/s design flow
+        // Condenser vacuum effect (deeper vacuum draws steam more effectively)
+        double vacFactor = 0.7 + 0.3 * (condenserPressure / 28.5);
+        vacFactor = std::clamp(vacFactor, 0.2, 1.1);
+
+        // Mass flow proportional to throttle opening and pressure ratio
+        double maxCapacity = 80.0; // kg/s design nominal flow
         double throttle = cvPosition / 100.0;
-        m_steamMassFlow = maxCapacity * throttle * std::sqrt(deltaP / 180.0);
-        m_steamMassFlow = std::clamp(m_steamMassFlow, 0.0, 200.0);
+        m_steamMassFlow = maxCapacity * throttle * pressureRatio * vacFactor;
+        m_steamMassFlow = std::clamp(m_steamMassFlow, 0.0, 120.0);
     } else {
         m_steamMassFlow = 0.0;
     }
 
     // 3. Shaft Dynamics (Inertia & Rotational Acceleration)
-    double steamTorque = m_steamMassFlow * 32.5; // Mechanical driving torque
-    double frictionLoss = 0.015 * m_speedRPM;
-
-    if (gridConnected && m_speedRPM > 3500.0) {
-        // Locked to grid frequency (60 Hz -> 3600 RPM)
-        // Deviations are heavily restrained by grid inertia
-        double speedError = 3600.0 - m_speedRPM;
-        m_speedRPM += speedError * 0.8 * dt;
-
-        // Mechanical power delivered to generator shaft
-        m_mechanicalPowerMW = (steamTorque - frictionLoss) / 10.0;
-        if (m_mechanicalPowerMW < 0.0) m_mechanicalPowerMW = 0.0;
-    } else {
-        // Free spinning (warming up or overspeed condition)
-        double netTorque = steamTorque - frictionLoss;
-        // J * dw/dt = netTorque
-        double rotationalInertia = 45.0; 
-        double dRPM = (netTorque / rotationalInertia) * 60.0;
-
-        m_speedRPM += dRPM * dt;
+    if (m_isTripped || !msvOpen || cvPosition <= 0.5 || m_steamMassFlow < 0.1) {
+        // Coast-down deceleration under friction and windage
+        double coastDown = 25.0 + 0.015 * m_speedRPM;
+        m_speedRPM -= coastDown * dt;
+        if (m_speedRPM < 0.0) m_speedRPM = 0.0;
         m_mechanicalPowerMW = 0.0;
+    } else {
+        if (gridConnected && m_speedRPM > 3400.0) {
+            // Locked to grid frequency (60 Hz -> 3600 RPM)
+            double speedError = 3600.0 - m_speedRPM;
+            m_speedRPM += speedError * 0.9 * dt;
+
+            // Mechanical power delivered to generator shaft (~250 MW at nominal 50 kg/s)
+            m_mechanicalPowerMW = (m_steamMassFlow / 50.0) * 250.0;
+            m_mechanicalPowerMW = std::clamp(m_mechanicalPowerMW, 0.0, 500.0);
+        } else {
+            // Free-spinning speed roll mode
+            // Equilibrium speed is proportional to steam inflow
+            double targetRPM = (m_steamMassFlow / 20.0) * 3600.0;
+            double dRPM = (targetRPM - m_speedRPM) * 0.5;
+            dRPM = std::clamp(dRPM, -200.0, 150.0);
+
+            m_speedRPM += dRPM * dt;
+            m_mechanicalPowerMW = 0.0;
+        }
     }
 
-    m_speedRPM = std::clamp(m_speedRPM, 0.0, 4200.0);
+    m_speedRPM = std::clamp(m_speedRPM, 0.0, 4400.0);
 
     // 4. Multi-Bearing Vibration Modeling (Bearings 1 and 2)
     if (m_speedRPM > 50.0) {

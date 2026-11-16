@@ -295,7 +295,10 @@ std::string HttpScadaServer::generateTelemetryJson() {
       << "\"firstOut\": " << firstOut << ","
       << "\"firstOutName\": \"" << firstOutName << "\","
       << "\"alarmLow\": " << r[PlantRegisters::REG_ALARM_WORD_LOW] << ","
-      << "\"alarmHigh\": " << r[PlantRegisters::REG_ALARM_WORD_HIGH]
+      << "\"alarmHigh\": " << r[PlantRegisters::REG_ALARM_WORD_HIGH] << ","
+      << "\"anomalyStatus\": " << r[PlantRegisters::REG_ANOMALY_STATUS] << ","
+      << "\"securityAlertLevel\": " << r[PlantRegisters::REG_SECURITY_ALERT_LEVEL] << ","
+      << "\"esd\": " << r[PlantRegisters::REG_EMERGENCY_SHUTDOWN_CMD]
       << "},"
 
       // Operator Targets
@@ -310,6 +313,12 @@ std::string HttpScadaServer::generateTelemetryJson() {
 
 bool HttpScadaServer::handleCommand(const std::string &body, std::string &outMessage) {
     // Basic JSON string key-value parser without requiring external libraries
+    if (body.find("\"cmd\":\"restart\"") != std::string::npos || body.find("\"cmd\": \"restart\"") != std::string::npos) {
+        bool ok = m_poller.restartSimulation();
+        outMessage = ok ? "Simulation Restart Commanded" : "Failed to send Restart";
+        return ok;
+    }
+
     if (body.find("\"cmd\":\"esd\"") != std::string::npos || body.find("\"cmd\": \"esd\"") != std::string::npos) {
         bool ok = m_poller.triggerEmergencyShutdown();
         outMessage = ok ? "Emergency Shutdown (ESD) Executed" : "Failed to send ESD";

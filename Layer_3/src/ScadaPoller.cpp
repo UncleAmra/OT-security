@@ -75,6 +75,10 @@ bool ScadaPoller::triggerEmergencyShutdown() {
     return sendWriteRegister(PlantRegisters::REG_EMERGENCY_SHUTDOWN_CMD, 1);
 }
 
+bool ScadaPoller::restartSimulation() {
+    return sendWriteRegister(PlantRegisters::REG_RESET_SIMULATION_CMD, 1);
+}
+
 bool ScadaPoller::setTargetMegawatts(uint16_t targetMW) {
     return sendWriteRegister(PlantRegisters::REG_OPERATOR_TARGET_MW, targetMW);
 }

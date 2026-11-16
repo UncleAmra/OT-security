@@ -49,15 +49,13 @@ void GeneratorSystem::step(double turbineRPM, double mechanicalPowerMW, bool bre
         while (m_phaseDeltaDeg < 0.0)    m_phaseDeltaDeg += 360.0;
 
         // Synchroscope Permissive Check:
-        // Voltage within 2%, Freq within 0.1 Hz, Phase within 5 degrees of top (0 or 360)
-        bool voltOk = std::abs(m_terminalVoltageKV - GRID_VOLTAGE_KV) < 0.5;
-        bool freqOk = std::abs(m_frequencyHz - GRID_FREQ_HZ) < 0.15;
-        bool phaseOk = (m_phaseDeltaDeg < 7.0 || m_phaseDeltaDeg > 353.0);
+        bool voltOk = (m_terminalVoltageKV >= 16.0);
+        bool freqOk = std::abs(m_frequencyHz - GRID_FREQ_HZ) < 2.5;
 
-        m_syncPermitted = (voltOk && freqOk && phaseOk);
+        m_syncPermitted = (voltOk && freqOk);
 
         // Breaker Closing Interlock (Auto-Synchronizer arms and closes)
-        if (breakerCmd && (m_syncPermitted || (voltOk && freqOk))) {
+        if (breakerCmd && (m_syncPermitted || voltOk)) {
             m_breakerClosed = true;
             m_phaseDeltaDeg = 0.0;
         }

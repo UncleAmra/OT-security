@@ -41,22 +41,23 @@ void BoilerSystem::step(double heatInputRate, double feedwaterFlowMass, double s
     }
 
     // 2. Thermodynamic Heat & Temperature Equations
-    // Combustion thermal heat input (scaled)
-    double heatInput = heatInputRate * 0.12; 
+    // Combustion thermal heat input (scaled for responsive & believable testbed startup)
+    // At nominal firing (1800 kW), heatGain is ~7.2 °C/s, warming cold boiler to 100°C in ~11s
+    double heatInput = heatInputRate * 0.004; 
 
     // Ambient convective loss
-    double heatLoss = 0.004 * (m_drumTemperature - AMBIENT_TEMP);
+    double heatLoss = 0.008 * (m_drumTemperature - AMBIENT_TEMP);
 
     // Latent heat loss due to steam generation
     double steamCooling = 0.0;
     if (m_drumTemperature > 100.0) {
-        steamCooling = steamMassFlow * 0.45;
+        steamCooling = steamMassFlow * 0.06;
     }
 
     // Safety valve venting cooling
     double reliefCooling = 0.0;
-    if (m_safetyValve1) reliefCooling += 15.0;
-    if (m_safetyValve2) reliefCooling += 25.0;
+    if (m_safetyValve1) reliefCooling += 6.0;
+    if (m_safetyValve2) reliefCooling += 10.0;
 
     // Net temperature change
     double dT = heatInput - heatLoss - steamCooling - reliefCooling;
@@ -66,22 +67,25 @@ void BoilerSystem::step(double heatInputRate, double feedwaterFlowMass, double s
     }
 
     // 3. Drum Pressure Dynamics (Rankine Steam Saturation Curve)
-    if (m_safetyValve1 || m_safetyValve2) {
-        // High rate relief pressure drop
-        double reliefFlowRate = (m_safetyValve1 ? 4.5 : 0.0) + (m_safetyValve2 ? 8.0 : 0.0);
-        double dP = -reliefFlowRate * (m_drumPressure - ATMOSPHERIC_PRESSURE) * 0.2;
-        m_drumPressure += dP * dt;
-    } else {
-        // Saturated steam pressure builds above 100°C
-        double targetPressure = ATMOSPHERIC_PRESSURE;
-        if (m_drumTemperature > 100.0) {
-            targetPressure += std::pow((m_drumTemperature - 100.0) * 0.14, 1.42) * 8.5;
-        }
-
-        // Pressure lag
-        double dP = (targetPressure - m_drumPressure) * 0.18;
-        m_drumPressure += dP * dt;
+    // Saturated steam pressure builds smoothly above 100°C
+    double targetPressure = ATMOSPHERIC_PRESSURE;
+    if (m_drumTemperature > 100.0) {
+        // Nominal operating saturation: 180°C corresponds to ~155 PSI
+        // 192°C approaches high-pressure warning (175 PSI)
+        // 200°C triggers overpressure trip (190 PSI)
+        targetPressure = ATMOSPHERIC_PRESSURE + ((m_drumTemperature - 100.0) / 80.0) * 140.0;
     }
+
+    // Pressure relief when safety valves are open
+    if (m_safetyValve1) targetPressure -= 25.0;
+    if (m_safetyValve2) targetPressure -= 35.0;
+    if (targetPressure < ATMOSPHERIC_PRESSURE) {
+        targetPressure = ATMOSPHERIC_PRESSURE;
+    }
+
+    // Smooth physical pressure lag
+    double dP = (targetPressure - m_drumPressure) * 0.5;
+    m_drumPressure += dP * dt;
 
     if (m_drumPressure < ATMOSPHERIC_PRESSURE) {
         m_drumPressure = ATMOSPHERIC_PRESSURE;
@@ -92,21 +96,17 @@ void BoilerSystem::step(double heatInputRate, double feedwaterFlowMass, double s
     double blowdownFlow = m_blowdownOpen ? 3.0 : 0.0;
     double netMassFlow = feedwaterFlowMass - steamMassFlow - blowdownFlow;
 
-    // 1 kg/s net imbalance results in ~0.25% level change per second
-    m_trueLiquidLevel += (netMassFlow * 0.25) * dt;
+    // 10 kg/s imbalance results in ~0.4% level change per second
+    m_trueLiquidLevel += (netMassFlow * 0.04) * dt;
     m_trueLiquidLevel = std::clamp(m_trueLiquidLevel, 0.0, 100.0);
 
     // 5. Shrink & Swell Phenomenon (Two-Phase Steam Bubble Volume)
-    // Rapid increase in steam flow -> pressure drops -> steam bubbles expand (SWELL)
-    // Rapid increase in cold feedwater -> collapses bubbles (SHRINK)
     double steamFlowDelta = steamMassFlow - m_prevSteamFlow;
     m_prevSteamFlow = steamMassFlow;
 
-    // Bubble volume increases with steam outflow surges
-    m_swellBubbleVolume += (steamFlowDelta * 2.5);
-    // Bubble volume relaxes back to steady-state with a 4-second time constant
-    m_swellBubbleVolume -= (m_swellBubbleVolume * 0.25) * dt;
-    m_swellBubbleVolume = std::clamp(m_swellBubbleVolume, -15.0, 20.0);
+    m_swellBubbleVolume += (steamFlowDelta * 0.3);
+    m_swellBubbleVolume -= (m_swellBubbleVolume * 0.2) * dt;
+    m_swellBubbleVolume = std::clamp(m_swellBubbleVolume, -5.0, 5.0);
 
     // Indicated level seen by DP (Differential Pressure) transmitters
     m_indicatedDrumLevel = m_trueLiquidLevel + m_swellBubbleVolume;
@@ -114,11 +114,9 @@ void BoilerSystem::step(double heatInputRate, double feedwaterFlowMass, double s
 
     // 6. Superheater & Desuperheater (Attemperator) Temperature
     if (m_drumTemperature > 100.0) {
-        // Superheated steam absorbs additional furnace radiant heat up to 540°C
-        double targetSuperheat = m_drumTemperature + 180.0;
-        // Spray valve injects cold feedwater directly into steam header
-        double sprayCooling = (m_sprayValvePos / 100.0) * 120.0;
-        targetSuperheat -= sprayCooling;
+        // Superheated steam absorbs additional radiant heat up to ~450 - 540°C
+        double sprayCooling = (m_sprayValvePos / 100.0) * 80.0;
+        double targetSuperheat = m_drumTemperature + 280.0 - sprayCooling;
 
         m_superheaterTemperature += (targetSuperheat - m_superheaterTemperature) * 0.15 * dt;
     } else {
