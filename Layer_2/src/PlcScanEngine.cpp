@@ -6,9 +6,12 @@ PlcScanEngine::PlcScanEngine(PlcDataBank &dataBank)
     : m_dataBank(dataBank),
       m_drumLevelPid(1.2, 0.05, 0.1, 0.0, 100.0),       // Kp, Ki, Kd, min, max
       m_turbineSpeedPid(0.08, 0.015, 0.005, 0.0, 60.0), // CV limit 60% during speed roll
-      m_turbineLoadPid(0.25, 0.03, 0.01, 0.0, 100.0),
+      m_turbineLoadPid(0.05, 0.02, 0.0, -30.0, 30.0),    // trim around MW feedforward
       m_draftPressurePid(1.0, 0.05, 0.02, 10.0, 100.0),
-      m_scanCount(0) {
+      m_scanCount(0),
+      m_pressureIntegral(0.0),
+      m_mwRamp(0.0),
+      m_prevBreakerClosed(false) {
     reset();
 }
 
@@ -19,6 +22,9 @@ void PlcScanEngine::reset() {
     m_draftPressurePid.reset();
     m_safety.reset();
     m_scanCount = 0;
+    m_pressureIntegral = 0.0;
+    m_mwRamp = 0.0;
+    m_prevBreakerClosed = false;
 }
 
 void PlcScanEngine::executeScan(double dt) {
@@ -66,11 +72,22 @@ void PlcScanEngine::executeScan(double dt) {
             registers[PlantRegisters::REG_MAIN_STEAM_STOP_VALVE] = 1; // Open MSV
             registers[PlantRegisters::REG_FD_FAN_SPEED] = 35;
 
-            // Fuel trim to hold pressure ~152 PSI
-            double targetPress = 152.0;
+            // Fuel trim PI to hold 152 PSI. The previous P-only trim (28 + 0.4*e)
+            // settled ~20 PSI high at full load, riding the 175 PSI alarm.
+            // Integrate only near setpoint and when not saturated (anti-windup).
+            const double targetPress = 152.0;
+            const double kp = 0.4, ki = 0.03, bias = 22.0;
             double pressError = targetPress - drumPress;
-            double fuel = 28.0 + pressError * 0.4;
-            registers[PlantRegisters::REG_FUEL_FEED_RATE] = static_cast<uint16_t>(std::clamp(fuel, 15.0, 45.0));
+            double fuel = bias + kp * pressError + ki * m_pressureIntegral;
+            // Min fire 10 kg/min (flame is stable above 2): at 15 the boiler made
+            // more steam than the turbine draws during speed roll and pressure crept to 175.
+            const double fuelMin = 10.0, fuelMax = 45.0;
+            bool saturated = (fuel >= fuelMax && pressError > 0) || (fuel <= fuelMin && pressError < 0);
+            if (std::abs(pressError) < 25.0 && !saturated) {
+                m_pressureIntegral += pressError * dt;
+                m_pressureIntegral = std::clamp(m_pressureIntegral, -400.0, 400.0);
+            }
+            registers[PlantRegisters::REG_FUEL_FEED_RATE] = static_cast<uint16_t>(std::round(std::clamp(fuel, fuelMin, fuelMax)));
         }
 
         // --- SUB-LOOP B: TURBINE GOVERNOR & GENERATOR SYNCHRONIZATION ---
@@ -93,10 +110,30 @@ void PlcScanEngine::executeScan(double dt) {
                 double targetMW = static_cast<double>(registers[PlantRegisters::REG_OPERATOR_TARGET_MW]);
                 if (targetMW <= 0.0) targetMW = 250.0;
                 double currentMW = static_cast<double>(registers[PlantRegisters::REG_GEN_ACTIVE_POWER_MW]);
-                double cvOut = m_turbineLoadPid.calculate(targetMW, currentMW, dt);
+
+                const double mwPerCv = 4.0; // ~4 MW per % CV at rated pressure
+
+                // On breaker close, start the ramp from the load the current CV
+                // already carries, so the valve does not step and steam draw does not drop.
+                if (!m_prevBreakerClosed) {
+                    double cvNow = static_cast<double>(registers[PlantRegisters::REG_GOVERNOR_CONTROL_VALVE]);
+                    m_mwRamp = std::max(currentMW, cvNow * mwPerCv);
+                    m_turbineLoadPid.reset();
+                }
+
+                // Ramp the MW setpoint (5 MW/s) instead of stepping straight to target.
+                const double rampRate = 5.0 * dt;
+                m_mwRamp += std::clamp(targetMW - m_mwRamp, -rampRate, rampRate);
+
+                // CV = feedforward from setpoint plus a slow PI trim. The old pure
+                // PID (Kp 0.25) ran 5 scans per physics update and limit-cycled the
+                // CV between 0 and 100%.
+                double cvOut = m_mwRamp / mwPerCv + m_turbineLoadPid.calculate(m_mwRamp, currentMW, dt);
+                cvOut = std::clamp(cvOut, 5.0, 100.0); // keep steam on the turbine while on-line
                 registers[PlantRegisters::REG_GOVERNOR_CONTROL_VALVE] = static_cast<uint16_t>(std::round(cvOut));
             }
         }
+        m_prevBreakerClosed = breakerClosed;
 
         // --- SUB-LOOP C: DRUM LEVEL 3-ELEMENT FEEDWATER CONTROL ---
         double levelSp = static_cast<double>(registers[PlantRegisters::REG_OPERATOR_TARGET_DRUM_LVL]);

@@ -1,10 +1,6 @@
-/**
- * OT POWER PLANT DIGITAL TWIN - SCADA WORKSTATION CONTROLLER
- * Minimal, reliable, clean SCADA operator logic.
- */
+// Unit 1 HMI - polls /api/telemetry from the L3 server and renders it.
 
 document.addEventListener('DOMContentLoaded', () => {
-  // Update live UTC clock
   setInterval(updateClock, 1000);
   updateClock();
 
@@ -30,14 +26,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // High-frequency telemetry polling (3.3 Hz)
+  setText('net-hmi-addr', location.hostname || '--');
+  setText('net-hmi-port', location.port || (location.protocol === 'https:' ? '443' : '80'));
+
   setInterval(pollTelemetry, 300);
   pollTelemetry();
 });
 
 function updateClock() {
   const now = new Date();
-  const timeStr = now.toTimeString().split(' ')[0] + ' UTC';
+  const timeStr = now.toTimeString().split(' ')[0];
   const el = document.getElementById('scada-clock');
   if (el) el.innerText = timeStr;
 }
@@ -57,14 +55,59 @@ async function sendCommand(cmd, val = 0) {
 }
 
 async function pollTelemetry() {
+  const t0 = performance.now();
   try {
     const res = await fetch('/api/telemetry');
     if (!res.ok) throw new Error('Network error');
     const data = await res.json();
     renderTelemetry(data);
+    updateComms(true, data, performance.now() - t0);
   } catch (err) {
     renderOffline();
+    updateComms(false, null, 0);
   }
+}
+
+// Communications panel. Display only, does not affect polling or commands.
+const comms = { ok: 0, fail: 0, lastHb: null, lastHbChange: 0 };
+
+function updateComms(httpOk, data, rtt) {
+  const now = Date.now();
+  const httpEl = document.getElementById('net-http-status');
+  const plcEl = document.getElementById('net-plc-status');
+
+  if (httpOk) {
+    comms.ok++;
+    setStatus(httpEl, 'up', true);
+    setText('net-rtt', rtt.toFixed(0) + ' ms');
+    setText('net-last', new Date().toTimeString().split(' ')[0]);
+  } else {
+    comms.fail++;
+    setStatus(httpEl, 'no response', false);
+    setText('net-rtt', '--');
+  }
+  setText('net-count', comms.ok + ' / ' + comms.fail);
+
+  if (!httpOk) {
+    setStatus(plcEl, 'unknown', null);
+    return;
+  }
+  setStatus(plcEl, data && data.connected ? 'connected' : 'disconnected', !!(data && data.connected));
+
+  if (data && data.heartbeat !== undefined) {
+    if (data.heartbeat !== comms.lastHb) {
+      comms.lastHb = data.heartbeat;
+      comms.lastHbChange = now;
+    }
+    const age = (now - comms.lastHbChange) / 1000;
+    setText('net-hb', data.heartbeat + (age > 3 ? ' (stale ' + age.toFixed(0) + ' s)' : ''));
+  }
+}
+
+function setStatus(el, text, good) {
+  if (!el) return;
+  el.innerText = text;
+  el.className = good === true ? 'st-ok' : good === false ? 'st-alarm' : 'dim';
 }
 
 function renderOffline() {
@@ -72,8 +115,8 @@ function renderOffline() {
   if (linkBadge) {
     linkBadge.innerText = 'PLC: OFFLINE';
     linkBadge.className = 'badge badge-link';
-    linkBadge.style.color = '#ef4444';
-    linkBadge.style.borderColor = '#ef4444';
+    linkBadge.style.color = '#e05a4f';
+    linkBadge.style.borderColor = '#e05a4f';
   }
 
   const masterBadge = document.getElementById('master-plant-status');
@@ -100,8 +143,8 @@ function renderTelemetry(data) {
   if (linkBadge) {
     linkBadge.innerText = 'PLC: ONLINE';
     linkBadge.className = 'badge badge-link';
-    linkBadge.style.color = '#10b981';
-    linkBadge.style.borderColor = '#10b981';
+    linkBadge.style.color = '#7fb07a';
+    linkBadge.style.borderColor = '#7fb07a';
   }
 
   const hbBadge = document.getElementById('scan-heartbeat');
@@ -181,28 +224,28 @@ function renderTelemetry(data) {
   setVal('val-steam-flow', b.steamFlow ? b.steamFlow.toFixed(1) : '0.0', 'kg/s');
   setVal('val-feed-flow', b.feedFlow ? b.feedFlow.toFixed(1) : '0.0', 'kg/s');
 
-  const srv1 = b.safety1 === 1 ? '<span style="color:#ef4444;font-weight:800;">OPEN (VENTING)</span>' : '<span style="color:#10b981;">CLOSED</span>';
-  const srv2 = b.safety2 === 1 ? '<span style="color:#ef4444;font-weight:800;">OPEN (VENTING)</span>' : '<span style="color:#10b981;">CLOSED</span>';
+  const srv1 = b.safety1 === 1 ? '<span style="color:#e05a4f;font-weight:700;">OPEN (VENTING)</span>' : '<span style="color:#7fb07a;">CLOSED</span>';
+  const srv2 = b.safety2 === 1 ? '<span style="color:#e05a4f;font-weight:700;">OPEN (VENTING)</span>' : '<span style="color:#7fb07a;">CLOSED</span>';
   setHtml('val-safety-valves', 'SRV-1: ' + srv1 + ' | SRV-2: ' + srv2);
 
   const boilerPill = document.getElementById('boiler-status-pill');
   if (boilerPill) {
     if (b.drumPress >= 190.0 || isMft) {
       boilerPill.innerText = 'TRIPPED';
-      boilerPill.style.color = '#ef4444';
-      boilerPill.style.borderColor = '#ef4444';
+      boilerPill.style.color = '#e05a4f';
+      boilerPill.style.borderColor = '#e05a4f';
     } else if (b.drumPress > 175.0 || b.drumLevel < 35.0 || b.drumLevel > 65.0) {
       boilerPill.innerText = 'WARNING';
-      boilerPill.style.color = '#f59e0b';
-      boilerPill.style.borderColor = '#f59e0b';
+      boilerPill.style.color = '#d9a730';
+      boilerPill.style.borderColor = '#d9a730';
     } else if (b.drumPress >= 100.0) {
       boilerPill.innerText = 'OPERATING';
-      boilerPill.style.color = '#10b981';
-      boilerPill.style.borderColor = '#10b981';
+      boilerPill.style.color = '#7fb07a';
+      boilerPill.style.borderColor = '#7fb07a';
     } else {
       boilerPill.innerText = 'WARMING UP';
-      boilerPill.style.color = '#06b6d4';
-      boilerPill.style.borderColor = '#06b6d4';
+      boilerPill.style.color = '#6f9fc8';
+      boilerPill.style.borderColor = '#6f9fc8';
     }
   }
 
@@ -217,10 +260,10 @@ function renderTelemetry(data) {
   if (flameEl) {
     if (c.flame === 1) {
       flameEl.innerText = 'FLAME PRESENT';
-      flameEl.style.color = '#10b981';
+      flameEl.style.color = '#7fb07a';
     } else {
       flameEl.innerText = 'DARK / NO FLAME';
-      flameEl.style.color = '#94a3b8';
+      flameEl.style.color = '#8a929b';
     }
   }
 
@@ -234,16 +277,16 @@ function renderTelemetry(data) {
   if (combPill) {
     if (isMft) {
       combPill.innerText = 'MFT TRIP';
-      combPill.style.color = '#ef4444';
-      combPill.style.borderColor = '#ef4444';
+      combPill.style.color = '#e05a4f';
+      combPill.style.borderColor = '#e05a4f';
     } else if (c.burnerState === 2) {
       combPill.innerText = 'FIRING';
-      combPill.style.color = '#10b981';
-      combPill.style.borderColor = '#10b981';
+      combPill.style.color = '#7fb07a';
+      combPill.style.borderColor = '#7fb07a';
     } else {
       combPill.innerText = 'STANDBY';
-      combPill.style.color = '#94a3b8';
-      combPill.style.borderColor = '#334155';
+      combPill.style.color = '#8a929b';
+      combPill.style.borderColor = '#3a4047';
     }
   }
 
@@ -256,31 +299,31 @@ function renderTelemetry(data) {
   setVal('val-lube-temp', t.lubeOilTemp ? t.lubeOilTemp.toFixed(1) : '25.0', '&deg;C');
   setVal('val-chest-temp', t.chestTemp ? t.chestTemp.toFixed(1) : '25.0', '&deg;C');
 
-  const msvStr = t.msv === 1 ? '<span style="color:#10b981;">OPEN</span>' : '<span style="color:#94a3b8;">CLOSED</span>';
+  const msvStr = t.msv === 1 ? '<span style="color:#7fb07a;">OPEN</span>' : '<span style="color:#8a929b;">CLOSED</span>';
   setHtml('val-turbine-valves', 'MSV: ' + msvStr + ' | CV: ' + (t.cv || 0) + '%');
 
   const turbPill = document.getElementById('turbine-status-pill');
   if (turbPill) {
     if (isTurbineTrip || t.tripped === 1) {
       turbPill.innerText = 'ETS TRIPPED';
-      turbPill.style.color = '#ef4444';
-      turbPill.style.borderColor = '#ef4444';
+      turbPill.style.color = '#e05a4f';
+      turbPill.style.borderColor = '#e05a4f';
     } else if (t.rpm >= 3708 || t.brg1Vib > 3.0 || t.brg2Vib > 3.0) {
       turbPill.innerText = 'WARNING';
-      turbPill.style.color = '#f59e0b';
-      turbPill.style.borderColor = '#f59e0b';
+      turbPill.style.color = '#d9a730';
+      turbPill.style.borderColor = '#d9a730';
     } else if (t.rpm >= 3550) {
       turbPill.innerText = 'SYNCHRONOUS (3600 RPM)';
-      turbPill.style.color = '#10b981';
-      turbPill.style.borderColor = '#10b981';
+      turbPill.style.color = '#7fb07a';
+      turbPill.style.borderColor = '#7fb07a';
     } else if (t.rpm > 100) {
       turbPill.innerText = 'ROLLING UP';
-      turbPill.style.color = '#06b6d4';
-      turbPill.style.borderColor = '#06b6d4';
+      turbPill.style.color = '#6f9fc8';
+      turbPill.style.borderColor = '#6f9fc8';
     } else {
       turbPill.innerText = 'STANDBY / STOPPED';
-      turbPill.style.color = '#94a3b8';
-      turbPill.style.borderColor = '#334155';
+      turbPill.style.color = '#8a929b';
+      turbPill.style.borderColor = '#3a4047';
     }
   }
 
@@ -296,10 +339,10 @@ function renderTelemetry(data) {
   if (breakerEl) {
     if (g.breaker === 1) {
       breakerEl.innerText = 'CLOSED (GRID TIED)';
-      breakerEl.style.color = '#10b981';
+      breakerEl.style.color = '#7fb07a';
     } else {
       breakerEl.innerText = 'OPEN (ISOLATED)';
-      breakerEl.style.color = '#f59e0b';
+      breakerEl.style.color = '#d9a730';
     }
   }
 
@@ -307,10 +350,10 @@ function renderTelemetry(data) {
   if (syncEl) {
     if (g.syncPermit === 1) {
       syncEl.innerText = 'PERMITTED';
-      syncEl.style.color = '#10b981';
+      syncEl.style.color = '#7fb07a';
     } else {
       syncEl.innerText = 'LOCKED';
-      syncEl.style.color = '#94a3b8';
+      syncEl.style.color = '#8a929b';
     }
   }
 
@@ -318,16 +361,16 @@ function renderTelemetry(data) {
   if (genPill) {
     if (isGenTrip) {
       genPill.innerText = '86G TRIPPED';
-      genPill.style.color = '#ef4444';
-      genPill.style.borderColor = '#ef4444';
+      genPill.style.color = '#e05a4f';
+      genPill.style.borderColor = '#e05a4f';
     } else if (g.breaker === 1) {
       genPill.innerText = 'ON-LINE (' + (g.mw ? g.mw.toFixed(0) : '0') + ' MW)';
-      genPill.style.color = '#10b981';
-      genPill.style.borderColor = '#10b981';
+      genPill.style.color = '#7fb07a';
+      genPill.style.borderColor = '#7fb07a';
     } else {
       genPill.innerText = 'OFF-LINE';
-      genPill.style.color = '#94a3b8';
-      genPill.style.borderColor = '#334155';
+      genPill.style.color = '#8a929b';
+      genPill.style.borderColor = '#3a4047';
     }
   }
 
@@ -345,16 +388,16 @@ function renderTelemetry(data) {
   if (condPill) {
     if (cd.vacuum < 8.0 && t.rpm > 500) {
       condPill.innerText = 'TRIPPED';
-      condPill.style.color = '#ef4444';
-      condPill.style.borderColor = '#ef4444';
+      condPill.style.color = '#e05a4f';
+      condPill.style.borderColor = '#e05a4f';
     } else if (cd.vacuum < 18.0) {
       condPill.innerText = 'POOR VACUUM';
-      condPill.style.color = '#f59e0b';
-      condPill.style.borderColor = '#f59e0b';
+      condPill.style.color = '#d9a730';
+      condPill.style.borderColor = '#d9a730';
     } else {
       condPill.innerText = 'HEALTHY';
-      condPill.style.color = '#10b981';
-      condPill.style.borderColor = '#10b981';
+      condPill.style.color = '#7fb07a';
+      condPill.style.borderColor = '#7fb07a';
     }
   }
 
@@ -382,19 +425,19 @@ function renderTelemetry(data) {
   const mftStateEl = document.getElementById('val-mft-state');
   if (mftStateEl) {
     mftStateEl.innerText = isMft ? 'TRIPPED (FUEL CUTOFF)' : 'HEALTHY';
-    mftStateEl.style.color = isMft ? '#ef4444' : '#10b981';
+    mftStateEl.style.color = isMft ? '#e05a4f' : '#7fb07a';
   }
 
   const etsStateEl = document.getElementById('val-ets-state');
   if (etsStateEl) {
     etsStateEl.innerText = isTurbineTrip ? 'TRIPPED (VALVES SHUT)' : 'HEALTHY';
-    etsStateEl.style.color = isTurbineTrip ? '#ef4444' : '#10b981';
+    etsStateEl.style.color = isTurbineTrip ? '#e05a4f' : '#7fb07a';
   }
 
   const esdLatchEl = document.getElementById('val-esd-latch');
   if (esdLatchEl) {
     esdLatchEl.innerText = isEsd ? 'SHUTDOWN LATCHED' : 'NORMAL';
-    esdLatchEl.style.color = isEsd ? '#ef4444' : '#10b981';
+    esdLatchEl.style.color = isEsd ? '#e05a4f' : '#7fb07a';
   }
 
   const plcModeEl = document.getElementById('val-plc-mode');
@@ -407,16 +450,16 @@ function renderTelemetry(data) {
   if (sisPill) {
     if (isTripped) {
       sisPill.innerText = 'TRIPPED';
-      sisPill.style.color = '#ef4444';
-      sisPill.style.borderColor = '#ef4444';
+      sisPill.style.color = '#e05a4f';
+      sisPill.style.borderColor = '#e05a4f';
     } else if (alertLevel > 0) {
       sisPill.innerText = 'ALERT';
-      sisPill.style.color = '#f59e0b';
-      sisPill.style.borderColor = '#f59e0b';
+      sisPill.style.color = '#d9a730';
+      sisPill.style.borderColor = '#d9a730';
     } else {
       sisPill.innerText = 'HEALTHY';
-      sisPill.style.color = '#10b981';
-      sisPill.style.borderColor = '#10b981';
+      sisPill.style.color = '#7fb07a';
+      sisPill.style.borderColor = '#7fb07a';
     }
   }
 
@@ -444,7 +487,7 @@ function updateAnnunciator(low, high, isEsd) {
   setTile('tile-flame-fail', (low & (1 << 8)) !== 0, true);
   setTile('tile-turb-vib', (low & (1 << 10)) !== 0, true);
   setTile('tile-turb-speed', (low & (1 << 12)) !== 0, true);
-  setTile('tile-vac-loss', (low & (1 << 14)) !== 0, true);
+  setTile('tile-vac-loss', (low & (1 << 14)) !== 0, false);
   setTile('tile-mft-active', (high & (1 << 0)) !== 0, true);
   setTile('tile-esd-latched', isEsd, true);
 }

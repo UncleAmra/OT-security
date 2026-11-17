@@ -27,8 +27,11 @@ void CondenserFeedwaterSystem::step(double steamExhaustMassFlow, double circWate
     // 1. Hotwell Temperature Dynamics
     // Steam condensing into hotwell transfers latent heat
     double heatAdded = steamExhaustMassFlow * 0.42; 
-    // Cooling water circulating through tube bundle absorbs heat
-    double heatRemoved = (m_circWaterFlow / 100.0) * 0.12 * (m_hotwellTemp - m_circWaterInletTemp);
+    // Cooling water circulating through tube bundle absorbs heat.
+    // Sized so full load (~50 kg/s exhaust) at 70% circ flow settles near 40 C
+    // hotwell / ~25 inHg vacuum. The old 0.12 coefficient could not reject full
+    // load heat: hotwell pinned at 105 C and vacuum sat at 10.8 inHg (alarm).
+    double heatRemoved = (m_circWaterFlow / 100.0) * 1.4 * (m_hotwellTemp - m_circWaterInletTemp);
     double ambientLoss = 0.005 * (m_hotwellTemp - 25.0);
 
     m_hotwellTemp += (heatAdded - heatRemoved - ambientLoss) * dt;

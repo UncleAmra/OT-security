@@ -46,6 +46,13 @@ private:
     PidController m_draftPressurePid;  // Furnace draft -> ID fan speed
 
     uint16_t m_scanCount;
+
+    // Drum pressure PI (fuel trim) state
+    double m_pressureIntegral;
+
+    // MW setpoint ramp and breaker edge detection for bumpless load pickup
+    double m_mwRamp;
+    bool   m_prevBreakerClosed;
 };
 
 #endif // PLC_SCAN_ENGINE_HPP

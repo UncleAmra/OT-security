@@ -17,6 +17,10 @@ void PlcSafetyInterlocks::reset() {
     m_alertLevel = PlantRegisters::SecurityAlertLevel::NORMAL;
     m_prevFuelRate = 0;
     m_prevTurbineRPM = 0;
+    for (int i = 0; i < ANOMALY_BITS; ++i) {
+        m_anomOnCount[i] = 0;
+        m_anomOffCount[i] = 0;
+    }
 }
 
 void PlcSafetyInterlocks::recordFirstOut(uint16_t tripCode) {
@@ -38,7 +42,8 @@ void PlcSafetyInterlocks::resetTrips() {
 }
 
 void PlcSafetyInterlocks::evaluateAnomalies(const std::vector<uint16_t> &reg) {
-    m_anomalyStatus = PlantRegisters::AnomalyBits::NONE;
+    // Raw (single-scan) detections are collected here, then debounced below.
+    uint16_t raw = PlantRegisters::AnomalyBits::NONE;
 
     uint16_t fuelRate    = reg[PlantRegisters::REG_FUEL_FEED_RATE];
     uint16_t drumPress   = reg[PlantRegisters::REG_BOILER_DRUM_PRESS];
@@ -51,33 +56,60 @@ void PlcSafetyInterlocks::evaluateAnomalies(const std::vector<uint16_t> &reg) {
 
     // 1. Rapid Fuel Injection / Manipulation
     if (m_startupGraceCounter > 20 && std::abs(static_cast<int>(fuelRate) - static_cast<int>(m_prevFuelRate)) >= 25) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::RAPID_FUEL_MANIPULATION;
+        raw |= PlantRegisters::AnomalyBits::RAPID_FUEL_MANIPULATION;
     }
 
     // 2. Pressure / Temperature Physical Disparity (overfiring or sensor spoofing)
     if (drumPress > 170 && drumTemp < 140) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::SENSOR_SPOOFING_INCONSISTENCY;
+        raw |= PlantRegisters::AnomalyBits::SENSOR_SPOOFING_INCONSISTENCY;
     } else if (drumPress >= 175) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::PRESSURE_TEMP_DISPARITY;
+        raw |= PlantRegisters::AnomalyBits::PRESSURE_TEMP_DISPARITY;
     }
 
     // 3. Mass Balance Violation (High steam out, zero feed in, low level)
     if (steamFlow > 25 && feedFlow < 5 && drumLevel < 40) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::MASS_BALANCE_IMBALANCE;
+        raw |= PlantRegisters::AnomalyBits::MASS_BALANCE_IMBALANCE;
     }
 
     // 4. Turbine Speed Runaway
     if (turbineRPM >= 3708 || (turbineRPM > 3620 && turbineRPM > m_prevTurbineRPM + 20)) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::TURBINE_SPEED_RUNAWAY;
+        raw |= PlantRegisters::AnomalyBits::TURBINE_SPEED_RUNAWAY;
     }
 
     // 5. Cooling Water Collapse while Turbine Operating
     if (turbineRPM > 500 && circFlow < 15) {
-        m_anomalyStatus |= PlantRegisters::AnomalyBits::COOLING_WATER_COLLAPSE;
+        raw |= PlantRegisters::AnomalyBits::COOLING_WATER_COLLAPSE;
     }
 
     m_prevFuelRate = fuelRate;
     m_prevTurbineRPM = turbineRPM;
+
+    // Debounce. Level-type checks must hold for PICKUP scans before they are
+    // reported; every bit is held for DROPOUT scans after its condition clears,
+    // so a 1-scan blip cannot make the HMI flicker. Rate-of-change checks
+    // (fuel step, RPM jump) are single-scan events by nature, so they pick up
+    // immediately and rely on the hold time instead.
+    const uint16_t PICKUP  = 10; // 1.0 s at 100 ms scan
+    const uint16_t DROPOUT = 30; // 3.0 s
+    const uint16_t eventBits = PlantRegisters::AnomalyBits::RAPID_FUEL_MANIPULATION |
+                               PlantRegisters::AnomalyBits::TURBINE_SPEED_RUNAWAY;
+
+    for (int i = 0; i < ANOMALY_BITS; ++i) {
+        uint16_t bit = static_cast<uint16_t>(1u << i);
+        uint16_t pickup = (eventBits & bit) ? 1 : PICKUP;
+
+        if (raw & bit) {
+            m_anomOffCount[i] = 0;
+            if (m_anomOnCount[i] < pickup) m_anomOnCount[i]++;
+            if (m_anomOnCount[i] >= pickup) m_anomalyStatus |= bit;
+        } else {
+            m_anomOnCount[i] = 0;
+            if ((m_anomalyStatus & bit) && ++m_anomOffCount[i] >= DROPOUT) {
+                m_anomalyStatus &= static_cast<uint16_t>(~bit);
+                m_anomOffCount[i] = 0;
+            }
+        }
+    }
 
     // Determine overall Security Alert Level
     if (m_mftActive || m_turbineTripActive || m_generatorTripActive) {

@@ -3,299 +3,192 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>OT Power Plant Digital Twin - SCADA Workstation</title>
+  <title>Unit 1 HMI</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <!-- SCADA Top Header -->
-  <header class="scada-header">
-    <div class="header-left">
-      <div class="plant-title">OT POWER PLANT DIGITAL TWIN</div>
-      <div class="plant-subtitle">PURDUE LAYER 3 &bull; SCADA OPERATOR WORKSTATION</div>
-    </div>
-    
-    <div class="header-center">
-      <div class="badge badge-link" id="link-status">PLC: CONNECTING...</div>
-      <div class="badge badge-scan" id="scan-heartbeat">HB: 0</div>
-      <div id="scada-clock" class="scada-clock">00:00:00 UTC</div>
+
+  <header class="topbar">
+    <div class="topbar-id">
+      <strong>Unit 1</strong> &ndash; Boiler / Turbine HMI
+      <span class="dim">Layer 3 operator station</span>
     </div>
 
-    <div class="header-right">
-      <button class="btn btn-restart" id="btn-restart" title="Reset simulation to cold safe startup state">
-        &#8635; RESTART SIMULATION
-      </button>
-      <button class="btn btn-esd" id="btn-esd" title="Emergency Plant Trip (Immediate MFT/ETS Shutdown)">
-        &#9888; EMERGENCY STOP
-      </button>
+    <div class="topbar-status">
+      <span id="link-status" class="badge">PLC: CONNECTING...</span>
+      <span id="scan-heartbeat" class="badge">HB: 0</span>
+      <span id="scada-clock" class="clock">--:--:--</span>
+    </div>
+
+    <div class="topbar-actions">
+      <button id="btn-restart" class="btn" title="Reset simulation to cold startup state">Restart sim</button>
+      <button id="btn-esd" class="btn btn-esd" title="Emergency shutdown: MFT + turbine trip, latched">ESD</button>
     </div>
   </header>
 
-  <!-- Master Status Banner -->
-  <section class="status-banner">
-    <div class="master-status-group">
-      <span class="status-label">OVERALL PLANT STATUS:</span>
-      <span class="status-badge status-offline" id="master-plant-status">INITIALIZING</span>
+  <section class="statusline">
+    <div class="statusline-item">
+      <span class="lbl">Plant</span>
+      <span id="master-plant-status" class="status-badge status-offline">INITIALIZING</span>
     </div>
-
-    <div class="security-status-group">
-      <span class="status-label">SECURITY & ANOMALY LEVEL:</span>
-      <span class="status-badge status-normal" id="security-alert-badge">NORMAL</span>
+    <div class="statusline-item">
+      <span class="lbl">Security</span>
+      <span id="security-alert-badge" class="status-badge status-normal">NORMAL</span>
     </div>
-
-    <div class="first-out-banner" id="first-out-banner">
-      <span class="first-out-title">FIRST-OUT TRIP CAUSE:</span>
-      <span class="first-out-val" id="first-out-text">NONE (ALL SYSTEMS NORMAL)</span>
+    <div class="statusline-item grow" id="first-out-banner">
+      <span class="lbl">First out</span>
+      <span id="first-out-text" class="first-out-val">--</span>
     </div>
   </section>
 
-  <!-- Main SCADA Process Monitoring Dashboard -->
-  <main class="dashboard-grid">
-    <!-- Card 1: Boiler & Steam Drum -->
-    <article class="scada-card" id="card-boiler">
-      <div class="card-header">
-        <span class="card-icon">&#9832;</span>
-        <span class="card-title">BOILER & STEAM DRUM</span>
-        <span class="card-badge" id="boiler-status-pill">COLD</span>
-      </div>
-      <div class="card-body">
-        <div class="metric-row">
-          <span class="m-label">Drum Temperature</span>
-          <span class="m-value" id="val-drum-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Drum Pressure</span>
-          <span class="m-value" id="val-drum-press">-- <span class="m-unit">PSI</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Water Drum Level</span>
-          <span class="m-value" id="val-drum-level">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Superheated Steam Temp</span>
-          <span class="m-value" id="val-superheat-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Main Steam Flow</span>
-          <span class="m-value" id="val-steam-flow">-- <span class="m-unit">kg/s</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Feedwater Inflow</span>
-          <span class="m-value" id="val-feed-flow">-- <span class="m-unit">kg/s</span></span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Safety Relief Valves</span>
-          <span class="m-state" id="val-safety-valves">SRV-1: CLOSED | SRV-2: CLOSED</span>
-        </div>
-      </div>
-    </article>
+  <main class="grid">
 
-    <!-- Card 2: Combustion & Draft Subsystem -->
-    <article class="scada-card" id="card-combustion">
-      <div class="card-header">
-        <span class="card-icon">&#128293;</span>
-        <span class="card-title">COMBUSTION & DRAFT</span>
-        <span class="card-badge" id="combustion-status-pill">OFF</span>
-      </div>
-      <div class="card-body">
-        <div class="metric-row">
-          <span class="m-label">Burner Firing State</span>
-          <span class="m-value" id="val-burner-state">OFF</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Optical Flame Sensor</span>
-          <span class="m-value" id="val-flame-status">DARK</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Fuel Feed Rate</span>
-          <span class="m-value" id="val-fuel-rate">-- <span class="m-unit">kg/min</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Furnace Draft Pressure</span>
-          <span class="m-value" id="val-furnace-press">-- <span class="m-unit">mm H2O</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Flue Gas Excess O2</span>
-          <span class="m-value" id="val-flue-o2">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Combustion Efficiency</span>
-          <span class="m-value" id="val-comb-eff">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Draft Fans (FD / ID)</span>
-          <span class="m-state" id="val-fans-state">FD: --% | ID: --%</span>
-        </div>
-      </div>
-    </article>
+    <section class="panel" id="card-boiler">
+      <h2>Boiler / drum <span id="boiler-status-pill" class="tag">--</span></h2>
+      <table class="pv">
+        <tr><td>Drum temp</td><td id="val-drum-temp" class="m-value">--</td></tr>
+        <tr><td>Drum pressure</td><td id="val-drum-press" class="m-value">--</td></tr>
+        <tr><td>Drum level</td><td id="val-drum-level" class="m-value">--</td></tr>
+        <tr><td>Superheat temp</td><td id="val-superheat-temp" class="m-value">--</td></tr>
+        <tr><td>Main steam flow</td><td id="val-steam-flow" class="m-value">--</td></tr>
+        <tr><td>Feedwater flow</td><td id="val-feed-flow" class="m-value">--</td></tr>
+        <tr class="sep"><td>Safety valves</td><td id="val-safety-valves" class="m-state">--</td></tr>
+      </table>
+    </section>
 
-    <!-- Card 3: Steam Turbine & DEH Governor -->
-    <article class="scada-card" id="card-turbine">
-      <div class="card-header">
-        <span class="card-icon">&#9881;</span>
-        <span class="card-title">STEAM TURBINE (DEH)</span>
-        <span class="card-badge" id="turbine-status-pill">STOPPED</span>
-      </div>
-      <div class="card-body">
-        <div class="metric-row">
-          <span class="m-label">Rotor Rotational Speed</span>
-          <span class="m-value" id="val-turbine-rpm">0 <span class="m-unit">RPM</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Bearing 1 Vibration</span>
-          <span class="m-value" id="val-brg1-vib">-- <span class="m-unit">mm/s</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Bearing 2 Vibration</span>
-          <span class="m-value" id="val-brg2-vib">-- <span class="m-unit">mm/s</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Lube Oil Supply Press</span>
-          <span class="m-value" id="val-lube-press">-- <span class="m-unit">Bar</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Lube Oil Temperature</span>
-          <span class="m-value" id="val-lube-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Steam Chest Metal Temp</span>
-          <span class="m-value" id="val-chest-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Turbine Valves (MSV / CV)</span>
-          <span class="m-state" id="val-turbine-valves">MSV: CLOSED | CV: 0%</span>
-        </div>
-      </div>
-    </article>
+    <section class="panel" id="card-combustion">
+      <h2>Combustion / draft <span id="combustion-status-pill" class="tag">--</span></h2>
+      <table class="pv">
+        <tr><td>Burner</td><td id="val-burner-state" class="m-value">--</td></tr>
+        <tr><td>Flame scanner</td><td id="val-flame-status" class="m-value">--</td></tr>
+        <tr><td>Fuel rate</td><td id="val-fuel-rate" class="m-value">--</td></tr>
+        <tr><td>Furnace draft</td><td id="val-furnace-press" class="m-value">--</td></tr>
+        <tr><td>Flue gas O2</td><td id="val-flue-o2" class="m-value">--</td></tr>
+        <tr><td>Combustion eff.</td><td id="val-comb-eff" class="m-value">--</td></tr>
+        <tr class="sep"><td>FD / ID fans</td><td id="val-fans-state" class="m-state">--</td></tr>
+      </table>
+    </section>
 
-    <!-- Card 4: Synchronous Generator & Electrical Switchyard -->
-    <article class="scada-card" id="card-generator">
-      <div class="card-header">
-        <span class="card-icon">&#9889;</span>
-        <span class="card-title">GENERATOR & SWITCHYARD</span>
-        <span class="card-badge" id="generator-status-pill">ISOLATED</span>
-      </div>
-      <div class="card-body">
-        <div class="metric-row">
-          <span class="m-label">Active Power Generation</span>
-          <span class="m-value" id="val-gen-mw">0.0 <span class="m-unit">MW</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">AC Frequency</span>
-          <span class="m-value" id="val-gen-freq">0.00 <span class="m-unit">Hz</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Terminal Phase Voltage</span>
-          <span class="m-value" id="val-gen-volt">0.0 <span class="m-unit">kV</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Main Breaker (52G)</span>
-          <span class="m-value" id="val-breaker-state">OPEN</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Power Factor</span>
-          <span class="m-value" id="val-power-factor">1.00</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Stator Winding Temp</span>
-          <span class="m-value" id="val-stator-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Grid Sync Permissive</span>
-          <span class="m-state" id="val-sync-permit">LOCKED</span>
-        </div>
-      </div>
-    </article>
+    <section class="panel" id="card-turbine">
+      <h2>Turbine <span id="turbine-status-pill" class="tag">--</span></h2>
+      <table class="pv">
+        <tr><td>Speed</td><td id="val-turbine-rpm" class="m-value">--</td></tr>
+        <tr><td>Brg 1 vibration</td><td id="val-brg1-vib" class="m-value">--</td></tr>
+        <tr><td>Brg 2 vibration</td><td id="val-brg2-vib" class="m-value">--</td></tr>
+        <tr><td>Lube oil press</td><td id="val-lube-press" class="m-value">--</td></tr>
+        <tr><td>Lube oil temp</td><td id="val-lube-temp" class="m-value">--</td></tr>
+        <tr><td>Steam chest temp</td><td id="val-chest-temp" class="m-value">--</td></tr>
+        <tr class="sep"><td>MSV / CV</td><td id="val-turbine-valves" class="m-state">--</td></tr>
+      </table>
+    </section>
 
-    <!-- Card 5: Condenser & Feedwater Subsystem -->
-    <article class="scada-card" id="card-condenser">
-      <div class="card-header">
-        <span class="card-icon">&#128167;</span>
-        <span class="card-title">CONDENSER & FEEDWATER</span>
-        <span class="card-badge" id="condenser-status-pill">NORMAL</span>
-      </div>
-      <div class="card-body">
-        <div class="metric-row">
-          <span class="m-label">Surface Condenser Vacuum</span>
-          <span class="m-value" id="val-cond-vacuum">-- <span class="m-unit">inHg</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Hotwell Condensate Temp</span>
-          <span class="m-value" id="val-hotwell-temp">-- <span class="m-unit">&deg;C</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Circulating Water Flow</span>
-          <span class="m-value" id="val-circ-flow">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Feed Pump A (BFP A)</span>
-          <span class="m-value" id="val-bfp-a">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Feed Pump B (BFP B)</span>
-          <span class="m-value" id="val-bfp-b">-- <span class="m-unit">%</span></span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Condensate Pump (CEP)</span>
-          <span class="m-value" id="val-cep-state">RUNNING</span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Deaerator Storage Tank</span>
-          <span class="m-state" id="val-deaerator-state">Level: --% | Press: -- Bar</span>
-        </div>
-      </div>
-    </article>
+    <section class="panel" id="card-generator">
+      <h2>Generator / 52G <span id="generator-status-pill" class="tag">--</span></h2>
+      <table class="pv">
+        <tr><td>Active power</td><td id="val-gen-mw" class="m-value">--</td></tr>
+        <tr><td>Frequency</td><td id="val-gen-freq" class="m-value">--</td></tr>
+        <tr><td>Terminal voltage</td><td id="val-gen-volt" class="m-value">--</td></tr>
+        <tr><td>Breaker 52G</td><td id="val-breaker-state" class="m-value">--</td></tr>
+        <tr><td>Power factor</td><td id="val-power-factor" class="m-value">--</td></tr>
+        <tr><td>Stator temp</td><td id="val-stator-temp" class="m-value">--</td></tr>
+        <tr class="sep"><td>Sync permissive</td><td id="val-sync-permit" class="m-state">--</td></tr>
+      </table>
+    </section>
 
-    <!-- Card 6: OT Security & Anomaly Monitor -->
-    <article class="scada-card" id="card-security">
-      <div class="card-header">
-        <span class="card-icon">&#128737;</span>
-        <span class="card-title">SECURITY & ANOMALY MONITOR</span>
-        <span class="card-badge" id="sis-status-pill">SIS HEALTHY</span>
-      </div>
-      <div class="card-body">
-        <div class="anomaly-display-box" id="anomaly-box">
-          <div class="anomaly-header">ACTIVE CYBER ANOMALY STATUS</div>
-          <div class="anomaly-message" id="anomaly-message">NO DETECTED THREATS OR ANOMALIES</div>
-        </div>
+    <section class="panel" id="card-condenser">
+      <h2>Condenser / feedwater <span id="condenser-status-pill" class="tag">--</span></h2>
+      <table class="pv">
+        <tr><td>Vacuum</td><td id="val-cond-vacuum" class="m-value">--</td></tr>
+        <tr><td>Hotwell temp</td><td id="val-hotwell-temp" class="m-value">--</td></tr>
+        <tr><td>Circ water flow</td><td id="val-circ-flow" class="m-value">--</td></tr>
+        <tr><td>BFP A</td><td id="val-bfp-a" class="m-value">--</td></tr>
+        <tr><td>BFP B</td><td id="val-bfp-b" class="m-value">--</td></tr>
+        <tr><td>Condensate pump</td><td id="val-cep-state" class="m-value">--</td></tr>
+        <tr class="sep"><td>Deaerator</td><td id="val-deaerator-state" class="m-state">--</td></tr>
+      </table>
+    </section>
 
-        <div class="metric-row" style="margin-top: 0.5rem;">
-          <span class="m-label">Master Fuel Trip (MFT)</span>
-          <span class="m-value" id="val-mft-state">HEALTHY</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Turbine Emergency Trip (ETS)</span>
-          <span class="m-value" id="val-ets-state">HEALTHY</span>
-        </div>
-        <div class="metric-row">
-          <span class="m-label">Emergency Shutdown (ESD)</span>
-          <span class="m-value" id="val-esd-latch">NORMAL</span>
-        </div>
-        <div class="metric-row sub-row">
-          <span class="m-label">Controller Regulatory Mode</span>
-          <span class="m-state" id="val-plc-mode">AUTO / CASCADE REGULATION</span>
-        </div>
+    <section class="panel" id="card-security">
+      <h2>Protection / anomaly <span id="sis-status-pill" class="tag">--</span></h2>
+      <div id="anomaly-box" class="anomaly">
+        <div class="dim">Anomaly detector</div>
+        <div id="anomaly-message" class="anomaly-message">--</div>
       </div>
-    </article>
+      <table class="pv">
+        <tr><td>MFT</td><td id="val-mft-state" class="m-value">--</td></tr>
+        <tr><td>Turbine trip (ETS)</td><td id="val-ets-state" class="m-value">--</td></tr>
+        <tr><td>ESD</td><td id="val-esd-latch" class="m-value">--</td></tr>
+        <tr class="sep"><td>PLC mode</td><td id="val-plc-mode" class="m-state">--</td></tr>
+      </table>
+    </section>
+
   </main>
 
-  <!-- Alarm Annunciator Matrix Footer -->
-  <footer class="annunciator-footer">
-    <div class="annunciator-label">SAFETY & PROCESS ALARM MATRIX</div>
-    <div class="annunciator-grid">
-      <div class="annun-tile" id="tile-press-hi">BOILER PRESS HI</div>
-      <div class="annun-tile" id="tile-press-hihi">BOILER OVERPRESS TRIP</div>
-      <div class="annun-tile" id="tile-level-lo">DRUM LEVEL LOW</div>
-      <div class="annun-tile" id="tile-level-lolo">DRUM LEVEL LO-LO TRIP</div>
-      <div class="annun-tile" id="tile-level-hi">DRUM LEVEL HIGH</div>
-      <div class="annun-tile" id="tile-level-hihi">DRUM LEVEL HI-HI TRIP</div>
-      <div class="annun-tile" id="tile-flame-fail">FLAME FAILURE TRIP</div>
-      <div class="annun-tile" id="tile-turb-vib">HIGH BEARING VIB</div>
-      <div class="annun-tile" id="tile-turb-speed">TURBINE OVERSPEED</div>
-      <div class="annun-tile" id="tile-vac-loss">VACUUM LOSS TRIP</div>
-      <div class="annun-tile" id="tile-mft-active">MFT TRIP ACTIVE</div>
-      <div class="annun-tile" id="tile-esd-latched">ESD SHUTDOWN LATCHED</div>
+  <section class="alarms">
+    <h2>Alarms</h2>
+    <div class="alarm-grid">
+      <div class="annun-tile" id="tile-press-hi">Drum press high</div>
+      <div class="annun-tile" id="tile-press-hihi">Drum press trip</div>
+      <div class="annun-tile" id="tile-level-lo">Drum level low</div>
+      <div class="annun-tile" id="tile-level-lolo">Drum level lo-lo trip</div>
+      <div class="annun-tile" id="tile-level-hi">Drum level high</div>
+      <div class="annun-tile" id="tile-level-hihi">Drum level hi-hi trip</div>
+      <div class="annun-tile" id="tile-flame-fail">Flame failure</div>
+      <div class="annun-tile" id="tile-turb-vib">Bearing vib high</div>
+      <div class="annun-tile" id="tile-turb-speed">Turbine overspeed</div>
+      <div class="annun-tile" id="tile-vac-loss">Vacuum low</div>
+      <div class="annun-tile" id="tile-mft-active">MFT active</div>
+      <div class="annun-tile" id="tile-esd-latched">ESD latched</div>
     </div>
-  </footer>
+  </section>
+
+  <section class="comms">
+    <h2>Communications</h2>
+    <table class="links">
+      <thead>
+        <tr>
+          <th>Link</th>
+          <th>Client</th>
+          <th>Server</th>
+          <th>Protocol / port</th>
+          <th>Traffic</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Browser &rarr; HMI</td>
+          <td>this browser</td>
+          <td id="net-hmi-addr">--</td>
+          <td>HTTP / TCP <span id="net-hmi-port">--</span></td>
+          <td>GET /api/telemetry every 300 ms, POST /api/command</td>
+          <td id="net-http-status">--</td>
+        </tr>
+        <tr>
+          <td>HMI &rarr; PLC</td>
+          <td>L3 scada_hmi</td>
+          <td>L2 plc_controller</td>
+          <td>Modbus/TCP 5020, unit 1</td>
+          <td>FC03 read 40001-40064 every 250 ms; FC06 single writes for commands</td>
+          <td id="net-plc-status">--</td>
+        </tr>
+        <tr>
+          <td>Physics &rarr; PLC</td>
+          <td>L1 physics_engine</td>
+          <td>L2 plc_controller</td>
+          <td>Modbus/TCP 5020, unit 1</td>
+          <td>FC03 read 64 regs, then FC16 write 64 regs, every 500 ms</td>
+          <td class="dim">not visible from L3</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="comms-foot">
+      <span>Last update <b id="net-last">--</b></span>
+      <span>Round trip <b id="net-rtt">--</b></span>
+      <span>Polls ok / failed <b id="net-count">0 / 0</b></span>
+      <span>Heartbeat <b id="net-hb">--</b></span>
+    </div>
+  </section>
 
   <script src="app.js"></script>
 </body>

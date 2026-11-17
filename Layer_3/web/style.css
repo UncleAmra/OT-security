@@ -1,399 +1,266 @@
+/* Unit 1 HMI - dark, flat. Colour is used only to mark state. */
+
 :root {
-  --bg: #090d16;
-  --panel: #111827;
-  --panel-border: #1f2937;
-  --panel-hover: #1e293b;
-  --text-main: #f3f4f6;
-  --text-muted: #9ca3af;
-  --text-dim: #6b7280;
+  --bg:      #15181b;
+  --panel:   #1c2024;
+  --line:    #2c3136;
+  --line-2:  #3a4047;
+  --text:    #c8ccd0;
+  --bright:  #e6e8ea;
+  --dim:     #7c848c;
 
-  --color-normal: #10b981;
-  --color-warning: #f59e0b;
-  --color-critical: #f97316;
-  --color-tripped: #ef4444;
-  --color-offline: #64748b;
-  --color-cyan: #06b6d4;
-  --color-blue: #3b82f6;
+  --ok:      #7fb07a;
+  --warn:    #d9a730;
+  --alarm:   #e05a4f;
+  --info:    #6f9fc8;
+  --off:     #8a929b;
 }
 
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+* { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
-  background-color: var(--bg);
-  color: var(--text-main);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif, monospace;
-  font-size: 13px;
-  line-height: 1.4;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.4 "Segoe UI", Tahoma, Arial, sans-serif;
 }
 
-/* Header */
-.scada-header {
-  background: #0f172a;
-  border-bottom: 2px solid #1e293b;
-  padding: 0.6rem 1.25rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-}
-
-.plant-title {
-  font-size: 1.05rem;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  color: #ffffff;
-}
-
-.plant-subtitle {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.08em;
+h2 {
+  font-size: 12px;
   font-weight: 600;
+  color: var(--bright);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
 }
 
-.header-center {
+.dim { color: var(--dim); }
+
+/* top bar */
+
+.topbar {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
+  gap: 16px;
+  padding: 8px 14px;
+  background: #101315;
+  border-bottom: 1px solid var(--line);
+}
+
+.topbar-id { flex: 1; color: var(--bright); }
+.topbar-id .dim { margin-left: 10px; font-size: 12px; }
+
+.topbar-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
 }
 
 .badge {
-  padding: 0.25rem 0.6rem;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  font-family: monospace;
+  padding: 2px 6px;
+  border: 1px solid var(--line-2);
+  color: var(--off);
 }
 
-.badge-link {
-  background: #1e293b;
-  color: var(--color-offline);
-  border: 1px solid #334155;
-}
+.clock { color: var(--dim); padding-left: 4px; }
 
-.badge-scan {
-  background: #1e293b;
-  color: var(--color-cyan);
-  border: 1px solid #0891b2;
-}
+.topbar-actions { display: flex; gap: 6px; }
 
-.scada-clock {
-  font-family: monospace;
-  font-size: 0.85rem;
-  color: #94a3b8;
-  font-weight: 600;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-}
-
-/* Buttons */
 .btn {
-  border: none;
-  border-radius: 4px;
-  padding: 0.5rem 1rem;
-  font-weight: 800;
-  font-size: 0.82rem;
-  letter-spacing: 0.05em;
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  background: #262b30;
+  color: var(--text);
+  border: 1px solid var(--line-2);
   cursor: pointer;
-  transition: all 0.2s ease;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
 }
-
-.btn:active {
-  transform: translateY(1px);
-}
-
-.btn-restart {
-  background: #0369a1;
-  color: #ffffff;
-  border: 1px solid #0284c7;
-}
-
-.btn-restart:hover {
-  background: #0284c7;
-  box-shadow: 0 0 10px rgba(2, 132, 199, 0.4);
-}
+.btn:hover { background: #2e343a; }
 
 .btn-esd {
-  background: #dc2626;
-  color: #ffffff;
-  border: 1px solid #ef4444;
-  animation: pulse-border 2s infinite;
+  background: #7a1f1a;
+  border-color: #a12a22;
+  color: #fff;
+  font-weight: 600;
 }
+.btn-esd:hover { background: #8e241e; }
 
-.btn-esd:hover {
-  background: #ef4444;
-  box-shadow: 0 0 14px rgba(239, 68, 68, 0.6);
-}
+/* status line */
 
-@keyframes pulse-border {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
-  50% { box-shadow: 0 0 0 6px rgba(239, 68, 68, 0); }
-}
-
-/* Status Banner */
-.status-banner {
-  background: #0b1120;
-  border-bottom: 1px solid #1e293b;
-  padding: 0.5rem 1.25rem;
+.statusline {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
   flex-wrap: wrap;
+  gap: 24px;
+  padding: 6px 14px;
+  border-bottom: 1px solid var(--line);
 }
 
-.master-status-group, .security-status-group, .first-out-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
+.statusline-item { display: flex; align-items: center; gap: 8px; }
+.statusline-item.grow { flex: 1; }
 
-.status-label, .first-out-title {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  letter-spacing: 0.05em;
-}
+.lbl { color: var(--dim); font-size: 12px; }
 
 .status-badge {
-  padding: 0.25rem 0.75rem;
-  border-radius: 4px;
-  font-weight: 800;
-  font-size: 0.8rem;
-  letter-spacing: 0.06em;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  padding: 1px 8px;
+  border: 1px solid;
 }
-
-.status-normal   { background: rgba(16, 185, 129, 0.2); color: var(--color-normal);   border: 1px solid var(--color-normal); }
-.status-warning  { background: rgba(245, 158, 11, 0.2); color: var(--color-warning);  border: 1px solid var(--color-warning); }
-.status-critical { background: rgba(249, 115, 22, 0.2); color: var(--color-critical); border: 1px solid var(--color-critical); }
-.status-tripped  { background: rgba(239, 68, 68, 0.25); color: var(--color-tripped);  border: 1px solid var(--color-tripped); }
-.status-offline  { background: rgba(100, 116, 139, 0.2); color: var(--color-offline); border: 1px solid var(--color-offline); }
+.status-normal   { color: var(--ok);    border-color: #3d5a3b; }
+.status-warning  { color: #111; background: var(--warn);  border-color: var(--warn); }
+.status-critical { color: #111; background: #e0823a;      border-color: #e0823a; }
+.status-tripped  { color: #fff; background: #a12a22;      border-color: var(--alarm); }
+.status-offline  { color: var(--off);   border-color: var(--line-2); }
 
 .first-out-val {
-  font-family: monospace;
-  font-weight: 700;
-  color: #cbd5e1;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 12px;
+  color: var(--text);
 }
+.first-out-val.active-trip { color: var(--alarm); font-weight: 700; }
 
-.first-out-val.active-trip {
-  color: var(--color-tripped);
-  font-weight: 800;
-}
+/* process panels */
 
-/* Dashboard Grid */
-.dashboard-grid {
-  flex: 1;
-  padding: 0.8rem 1.25rem;
+.grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
-  gap: 0.8rem;
-  overflow-y: auto;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 10px 14px;
 }
 
-/* SCADA Card */
-.scada-card {
+@media (max-width: 1100px) { .grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .grid { grid-template-columns: 1fr; } .topbar { flex-wrap: wrap; } }
+
+.panel {
   background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  display: flex;
-  flex-direction: column;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
-  transition: border-color 0.2s ease;
+  border: 1px solid var(--line);
 }
 
-.scada-card:hover {
-  border-color: #374151;
+.tag {
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 11px;
+  font-weight: 400;
+  padding: 0 6px;
+  border: 1px solid var(--line-2);
+  color: var(--off);
 }
 
-.scada-card.card-warning {
-  border-color: var(--color-warning);
-}
+table.pv { width: 100%; border-collapse: collapse; }
 
-.scada-card.card-critical {
-  border-color: var(--color-critical);
+table.pv td {
+  padding: 3px 10px;
+  border-bottom: 1px solid #23282c;
 }
+table.pv tr:last-child td { border-bottom: 0; }
+table.pv td:first-child { color: var(--dim); }
 
-.scada-card.card-tripped {
-  border-color: var(--color-tripped);
+.m-value, .m-state {
+  text-align: right;
+  font-family: Consolas, "Courier New", monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--bright);
+  white-space: nowrap;
 }
-
-.card-header {
-  background: #1e293b;
-  padding: 0.5rem 0.85rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top-left-radius: 5px;
-  border-top-right-radius: 5px;
-  border-bottom: 1px solid var(--panel-border);
-}
-
-.card-icon {
-  font-size: 1.1rem;
-  margin-right: 0.3rem;
-}
-
-.card-title {
-  font-weight: 800;
-  font-size: 0.78rem;
-  letter-spacing: 0.05em;
-  color: #e2e8f0;
-  flex: 1;
-}
-
-.card-badge {
-  font-size: 0.7rem;
-  font-weight: 700;
-  padding: 0.15rem 0.5rem;
-  border-radius: 3px;
-  background: #0f172a;
-  color: var(--text-muted);
-  border: 1px solid #334155;
-}
-
-.card-body {
-  padding: 0.75rem 0.85rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  flex: 1;
-}
-
-/* Metric Row */
-.metric-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  padding: 0.2rem 0;
-  border-bottom: 1px dotted #1f2937;
-}
-
-.metric-row:last-child {
-  border-bottom: none;
-}
-
-.m-label {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  font-weight: 500;
-}
-
-.m-value {
-  font-family: monospace;
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #ffffff;
-}
+.m-state { font-size: 12px; color: var(--text); }
 
 .m-unit {
-  font-size: 0.72rem;
-  font-weight: 400;
-  color: var(--text-dim);
-  margin-left: 0.15rem;
+  display: inline-block;
+  min-width: 48px;
+  text-align: left;
+  color: var(--dim);
+  font-size: 11px;
+  padding-left: 4px;
 }
 
-.m-state {
-  font-family: monospace;
-  font-size: 0.76rem;
-  font-weight: 700;
-  color: var(--color-cyan);
-}
+table.pv tr.sep td { border-top: 1px solid var(--line); }
 
-.metric-row.sub-row {
-  background: #0f172a;
-  padding: 0.35rem 0.5rem;
-  border-radius: 4px;
-  margin-top: 0.3rem;
-  border-bottom: none;
+.anomaly {
+  margin: 8px 10px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  background: #171a1d;
+  font-size: 12px;
 }
-
-/* Anomaly Display Box */
-.anomaly-display-box {
-  background: #0b1120;
-  border: 1px solid #334155;
-  border-radius: 4px;
-  padding: 0.5rem;
-  min-height: 48px;
-}
-
-.anomaly-header {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--text-dim);
-  letter-spacing: 0.05em;
-  margin-bottom: 0.2rem;
-}
-
 .anomaly-message {
-  font-family: monospace;
-  font-size: 0.78rem;
-  font-weight: 700;
-  color: var(--color-normal);
+  font-family: Consolas, "Courier New", monospace;
+  color: var(--ok);
+  margin-top: 2px;
+}
+.anomaly-message.anomaly-active { color: var(--alarm); }
+
+/* alarms */
+
+.alarms, .comms {
+  margin: 0 14px 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
 }
 
-.anomaly-message.anomaly-active {
-  color: var(--color-critical);
-}
-
-/* Alarm Annunciator Matrix Footer */
-.annunciator-footer {
-  background: #090d16;
-  border-top: 2px solid #1e293b;
-  padding: 0.5rem 1.25rem 0.75rem;
-}
-
-.annunciator-label {
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--text-dim);
-  letter-spacing: 0.08em;
-  margin-bottom: 0.4rem;
-}
-
-.annunciator-grid {
+.alarm-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
-  gap: 0.35rem;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  padding: 8px 10px;
 }
+@media (max-width: 1100px) { .alarm-grid { grid-template-columns: repeat(4, 1fr); } }
+@media (max-width: 700px)  { .alarm-grid { grid-template-columns: repeat(2, 1fr); } }
 
 .annun-tile {
-  background: #111827;
-  border: 1px solid #1f2937;
-  padding: 0.4rem 0.25rem;
+  padding: 5px 4px;
   text-align: center;
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  color: #4b5563;
-  border-radius: 3px;
+  font-size: 11px;
+  color: #50575e;
+  background: #181b1e;
+  border: 1px solid #262b2f;
   user-select: none;
-  transition: all 0.2s ease;
+}
+.annun-tile.active-warn  { color: #111; background: var(--warn);  border-color: var(--warn); }
+.annun-tile.active-alarm { color: #fff; background: #a12a22;      border-color: var(--alarm); font-weight: 600; }
+
+/* communications */
+
+.comms { overflow-x: auto; }
+
+table.links {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.links th {
+  text-align: left;
+  font-weight: 400;
+  color: var(--dim);
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--line);
+}
+table.links td {
+  padding: 5px 10px;
+  border-bottom: 1px solid #23282c;
+  vertical-align: top;
+}
+table.links td:nth-child(3),
+table.links td:nth-child(4),
+table.links td:last-child {
+  font-family: Consolas, "Courier New", monospace;
+  white-space: nowrap;
 }
 
-.annun-tile.active-alarm {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: var(--color-tripped);
-  color: #fee2e2;
-  box-shadow: 0 0 8px rgba(239, 68, 68, 0.4);
+.comms-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--dim);
+}
+.comms-foot b {
+  font-weight: 400;
+  color: var(--text);
+  font-family: Consolas, "Courier New", monospace;
 }
 
-.annun-tile.active-warn {
-  background: rgba(245, 158, 11, 0.2);
-  border-color: var(--color-warning);
-  color: #fef3c7;
-}
+.st-ok    { color: var(--ok); }
+.st-alarm { color: var(--alarm); }

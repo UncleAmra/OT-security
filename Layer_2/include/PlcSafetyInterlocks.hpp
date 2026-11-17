@@ -55,6 +55,11 @@ private:
     uint16_t m_prevFuelRate;
     uint16_t m_prevTurbineRPM;
 
+    // Anomaly debounce: per-bit consecutive-scan counters (6 anomaly bits)
+    static constexpr int ANOMALY_BITS = 6;
+    uint16_t m_anomOnCount[ANOMALY_BITS];
+    uint16_t m_anomOffCount[ANOMALY_BITS];
+
     void recordFirstOut(uint16_t tripCode);
     void evaluateAnomalies(const std::vector<uint16_t> &reg);
 };
