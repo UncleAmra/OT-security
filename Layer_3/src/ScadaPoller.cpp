@@ -12,6 +12,8 @@ ScadaPoller::ScadaPoller(const std::string &plcIp, int plcPort, uint8_t unitId)
 
 ScadaPoller::~ScadaPoller() {
     stop();
+
+    
 }
 
 bool ScadaPoller::start() {

@@ -4,7 +4,7 @@ An Operational Technology (OT) testbed simulating a 500 MW critical infrastructu
 
 ---
 
-## 1. Purdue Layer Architecture & Network Topology
+## 1. Purdue Layer Architecture & Network Topologyyy
 
 The environment is distributed across isolated machines on a private, host-only virtual network. In this deployment we used **3 machines** (Layer 1 and Layer 2 on separate VMs, Layer 3 on the host); a 4th machine (Security node) is planned but not yet running.
 
