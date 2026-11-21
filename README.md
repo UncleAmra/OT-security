@@ -20,84 +20,26 @@ Each `.hpp` in `include/` has a matching `.cpp` in `src/`. Files marked *(legacy
 
 ```
 OT-security/
-├── common/                              Shared headers used by all three layers
-│   ├── PlantRegisters.hpp               64-register Modbus map, alarm bits, first-out trip codes
-│   ├── ModbusProtocol.hpp               Modbus/TCP client + request/response frame encoding
-│   └── SocketUtils.hpp                  Cross-platform TCP socket wrappers (WinSock / POSIX)
-│
-├── Layer_1/                             LAYER 1: PHYSICS DIGITAL TWIN
-│   ├── include/
-│   │   ├── DigitalTwinPlant.hpp         Couples all subsystems; registers in → physics → registers out
-│   │   ├── CombustionSystem.hpp         Fuel, FD/ID fans, furnace draft, flame, flue-gas O2
-│   │   ├── BoilerSystem.hpp             Steam drum pressure/temp/level, superheater, safety valves
-│   │   ├── TurbineSystem.hpp            Rotor speed, steam flow, vibration, lube oil, trip
-│   │   ├── GeneratorSystem.hpp          MW/MVAR, frequency, voltage, AVR, 52G breaker, sync
-│   │   ├── CondenserFeedwaterSystem.hpp Vacuum, hotwell, deaerator, BFP A/B, condensate pump
-│   │   └── boiler.h, turbine.h, generator.h, condenser.h,
-│   │       modbus_client.h, config.h    (legacy) C headers
-│   ├── src/
-│   │   ├── main.cpp                     Main loop: read PLC → step twin → write PLC + console view
-│   │   ├── DigitalTwinPlant.cpp         ┐
-│   │   ├── CombustionSystem.cpp         │
-│   │   ├── BoilerSystem.cpp             │ Implementations of the headers above
-│   │   ├── TurbineSystem.cpp            │
-│   │   ├── GeneratorSystem.cpp          │
-│   │   ├── CondenserFeedwaterSystem.cpp ┘
-│   │   └── main.c, boiler.c, turbine.c, generator.c,
-│   │       condenser.c, modbus_client.c (legacy) old C engine
-│   ├── mock_plc.py                      (legacy) Python stand-in PLC for the old 16-register map
-│   ├── README.md                        Layer 1 notes
-│   ├── VM_DEPLOYMENT.md                 Older VM deployment notes
-│   ├── physics_engine.exe               Prebuilt Windows binary
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── Layer_2/                             LAYER 2: SOFT PLC
-│   ├── include/
-│   │   ├── ModbusTcpServer.hpp          Multi-client Modbus/TCP server (FC03, FC06, FC16)
-│   │   ├── PlcDataBank.hpp              Thread-safe store for the 64 holding registers
-│   │   ├── PlcScanEngine.hpp            10 Hz scan cycle: startup sequence + control loops
-│   │   ├── PidController.hpp            Generic PID with output limits (header-only)
-│   │   └── PlcSafetyInterlocks.hpp      SIS: MFT, turbine trip, ESD, alarms, first-out latch
-│   ├── src/
-│   │   ├── main.cpp                     Starts server + scan loop, console status view
-│   │   ├── ModbusTcpServer.cpp          ┐
-│   │   ├── PlcDataBank.cpp              │ Implementations of the headers above
-│   │   ├── PlcScanEngine.cpp            │
-│   │   └── PlcSafetyInterlocks.cpp      ┘
-│   ├── README.md                        Layer 2 notes
-│   ├── plc_controller.exe               Prebuilt Windows binary
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── Layer_3/                             LAYER 3: SCADA / HMI
-│   ├── include/
-│   │   ├── ScadaPoller.hpp              Background Modbus poller (4 Hz) + command writes
-│   │   └── HttpScadaServer.hpp          HTTP server: static files + JSON API
-│   ├── src/
-│   │   ├── main.cpp                     Starts poller + HTTP server
-│   │   ├── ScadaPoller.cpp              ┐ Implementations of the headers above
-│   │   ├── HttpScadaServer.cpp          ┘
-│   │   └── *.o                          Build leftovers (object files)
-│   ├── web/
-│   │   ├── index.html                   Dashboard layout: P&ID, gauges, alarms, controls
-│   │   ├── app.js                       Polls /api/telemetry, draws trends, sends /api/command
-│   │   └── style.css                    Dashboard styling
-│   ├── README.md                        Layer 3 notes
-│   ├── scada_hmi.exe                    Prebuilt Windows binary
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── docs/
-│   └── architecture.svg                 Architecture diagram (top of this README)
-├── build_all.bat                        Build all three layers (Windows)
-├── build_all.sh                         Build all three layers (Linux)
-├── run_all.bat                          Start all three layers on one Windows machine
-├── test_system.py                       End-to-end smoke test (starts layers, checks Modbus + HTTP)
-├── CMakeLists.txt                       Root CMake project (builds all layers)
-├── OT-Security Plant Simulator How It Works.pdf   Explainer for teammates
-├── image.png, image-1.png               Old design diagrams (NodeRed/OpenPLC era, outdated)
-└── README.md                            This file
+├── common/                    Shared headers used by all layers
+│   ├── PlantRegisters.hpp     64-register Modbus map, alarm bits, trip codes
+│   ├── ModbusProtocol.hpp     Minimal Modbus/TCP client + frame encoding
+│   └── SocketUtils.hpp        Cross-platform socket wrappers (WinSock / POSIX)
+├── Layer_1/                   Physics digital twin
+│   ├── include/  src/         *System.cpp models + DigitalTwinPlant + main.cpp
+│   └── Makefile  CMakeLists.txt
+├── Layer_2/                   Soft PLC
+│   ├── include/  src/         ModbusTcpServer, PlcDataBank, PlcScanEngine,
+│   │                          PlcSafetyInterlocks, PidController
+│   └── Makefile  CMakeLists.txt
+├── Layer_3/                   SCADA / HMI
+│   ├── include/  src/         ScadaPoller, HttpScadaServer, main.cpp
+│   ├── web/                   index.html, app.js, style.css (dashboard)
+│   └── Makefile  CMakeLists.txt
+├── docs/architecture.svg      Diagram above
+├── build_all.bat / .sh        Build all three layers (Windows / Linux)
+├── run_all.bat                Start all three layers locally (Windows)
+├── test_system.py             End-to-end smoke test (Modbus + HTTP)
+└── CMakeLists.txt             Root CMake project
 ```
 
 ## Requirements
