@@ -1,182 +1,124 @@
-# OT Power Plant Security Testbed with Agentic AI
+# OT Power Plant Security Testbed
 
-An Operational Technology (OT) testbed simulating a 500 MW critical infrastructure power plant using an adapted **Purdue Model (ISA-95 / IEC 62443)** across a multi-machine network topology. Built completely in **modern C++ (C++17/C++20)**, this environment pairs high-fidelity thermodynamic and electromechanical simulation with real-time industrial protocols (Modbus/TCP) and an interactive web-based SCADA HMI workstation.
+A small Operational Technology (OT) testbed that simulates a 500 MW steam power plant, split across the levels of the **Purdue model**. Each layer is a separate C++17 program, and they talk over plain **Modbus/TCP**, so you can capture, study and later attack or defend the traffic between them.
 
----
+![Layer architecture](docs/architecture.svg)
 
-## 1. Purdue Layer Architecture & Network Topologyyy
+## How it works
 
-The environment is distributed across isolated machines on a private, host-only virtual network. In this deployment we used **3 machines** (Layer 1 and Layer 2 on separate VMs, Layer 3 on the host); a 4th machine (Security node) is planned but not yet running.
+**Layer 1: Physics Digital Twin** (`physics_engine`) plays the physical plant. It models combustion and draft, the boiler and steam drum, the steam turbine, the generator, and the condenser/feedwater loop as coupled equations, stepping them twice a second. On every tick it reads the actuator registers from the PLC (fuel rate, valve positions, pump speeds, breaker), computes the new plant state, and writes the sensor values (pressures, temperatures, RPM, MW, …) back into the PLC.
 
-```
-+---------------------------------------------------------------------------------------+
-|  Layer 3 (Purdue Level 3 - SCADA / HMI Operator Workstation)                          |
-|  Host machine (e.g. Windows), connects OUT to the Layer 2 PLC over Modbus/TCP         |
-|  - C++ Asynchronous Modbus Client Daemon + Embedded Web SCADA Server                  |
-|  - Interactive Dark-Mode P&ID Plant Schematic (SVG/Canvas), Real-Time Gauges & Trends  |
-|  - Operator Controls: Megawatt demand, drum setpoints, breaker toggle, emergency ESD  |
-+-------------------------------------------▲-------------------------------------------+
-                                            │  Modbus/TCP (Port 5020)
-                                            ▼
-+---------------------------------------------------------------------------------------+
-|  Layer 2 (Purdue Level 2 - Industrial PLC Controller Runtime) — VM                    |
-|  Listens on 0.0.0.0:5020, reachable at this VM's host-only IP                         |
-|  - Multi-Client C++ Modbus TCP Server Daemon (Holding Registers 40001 - 40064)        |
-|  - Deterministic 10 Hz Cyclic Scan Engine (Input Scan -> Logic/PID -> SIS -> Outputs) |
-|  - Regulatory Control: Drum Level 3-element PID, Turbine DEH Governor, Draft Control  |
-|  - Safety Instrumented System (SIS / 2oo3): MFT, Turbine ETS Trip, First-Out Latch    |
-+-------------------------------------------▲-------------------------------------------+
-                                            │  Modbus/TCP (Port 5020)
-                                            ▼
-+---------------------------------------------------------------------------------------+
-|  Layer 1 (Purdue Level 1 - Physics Digital Twin Engine) — VM                          |
-|  Connects OUT to the Layer 2 PLC's IP; writes sensor values into its registers        |
-|  - Modular C++ Digital Twin stepping coupled non-linear differential equations (2 Hz) |
-|  - Steam Drum (Shrink & swell bubble dynamics, Rankine saturation curve, ASME relief) |
-|  - Combustion & Draft (Forced/Induced draft fans, furnace draft pressure, flame scan) |
-|  - Steam Turbine (Rotor inertia, governor CV throttle, 1800 RPM resonance, ETS trip)  |
-|  - Synchronous Generator (Terminal kV, AVR excitation, grid sync permissive, 52G)     |
-|  - Condenser & Feedwater (Vacuum inHg, hotwell cooling, redundant BFP A/B pumps, CEP) |
-+---------------------------------------------------------------------------------------+
+**Layer 2: Soft PLC** (`plc_controller`) is the hub of the system and the **only server**. It holds 64 Modbus holding registers (`common/PlantRegisters.hpp`) and runs a 10 Hz scan cycle: read inputs → run the startup sequence and PID loops (drum level, turbine speed/load, furnace draft) → evaluate the safety system (Master Fuel Trip, turbine trip, ESD, first-out latch) → write outputs. Layer 1 and Layer 3 both connect to it as Modbus clients on port **5020**.
 
-+---------------------------------------------------------------------------------------+
-|  Layer 4 (Purdue Level 2/3 Security Node - Red & Blue Team AI Agents) — NOT YET UP     |
-|  - Promiscuous packet sniffing (PyShark/Scapy) on the Host-Only network interface     |
-|  - Tier 1 High-Speed ML Filter (Isolation Forest anomaly detector < 1 ms latency)     |
-|  - Tier 2 Agentic LLM Orchestrator (Reasoning, autonomous mitigation & OT interlocks) |
-|  - Red Team offensive agent executing Modbus register spoofing & exploit injection   |
-+---------------------------------------------------------------------------------------+
-```
+**Layer 3: SCADA / HMI** (`scada_hmi`) is the operator workstation. A background poller reads all 64 registers from the PLC 4 times a second. An embedded HTTP server (default port **8085**) serves the web dashboard in `Layer_3/web/` and exposes `/api/telemetry` and `/api/command`. Operator actions such as MW target, drum level setpoint, breaker, ESD and reset become single-register Modbus writes to the PLC.
 
-**Important architectural note:** the HMI (Layer 3) only ever talks to the PLC (Layer 2). It has no direct connection to Layer 1. Layer 1 writes values into the PLC's registers; the HMI reads them back. This means:
-- If Layer 1 dies, the PLC keeps answering the HMI, so the dashboard keeps displaying the *last known values* instead of erroring — it will look deceptively normal.
-- If Layer 2 (the PLC) dies, the HMI loses its only upstream connection and stops entirely, since the PLC is a single point of failure for the whole visualization layer.
+**How they are connected:** Layer 1 and Layer 3 **never talk to each other directly**; every value goes through the PLC's registers. So if Layer 1 stops, the HMI keeps showing the last known values (it looks normal but is frozen). If the PLC stops, both other layers lose their only link and keep retrying until it comes back. **Layer 4** (security node with packet capture, an ML anomaly detector, and Red/Blue AI agents) is planned and not built yet.
 
----
-
-## 2. Directory Structure
+## Directory structure
 
 ```
 OT-security/
-├── common/                     # Cross-platform shared C++ headers
-│   ├── PlantRegisters.hpp      # 64-register master Modbus mapping & bitmasks
-│   ├── SocketUtils.hpp         # Cross-platform RAII socket wrappers (WinSock & POSIX)
-│   └── ModbusProtocol.hpp      # Zero-dependency Modbus TCP client/server serializer
-├── Layer_1/                    # Level 1: Physics Digital Twin Engine (C++)
-│   ├── include/                # Boiler, Combustion, Turbine, Generator, Condenser headers
-│   ├── src/                    # Differential equation implementations & main loop
-│   ├── Makefile                # GCC/MinGW build configuration
-│   └── CMakeLists.txt          # CMake build configuration
-├── Layer_2/                    # Level 2: Industrial PLC Controller Runtime (C++)
-│   ├── include/                # DataBank, PID Controller, SafetyInterlocks, ScanEngine
-│   ├── src/                    # Multi-client Modbus server & scan cycle execution
-│   ├── Makefile                # GCC/MinGW build configuration
-│   └── CMakeLists.txt          # CMake build configuration
-├── Layer_3/                    # Level 3: SCADA / HMI Operator Workstation (C++ & Web)
-│   ├── include/                # Asynchronous ScadaPoller & embedded HttpScadaServer
-│   ├── src/                    # Telemetry caching, REST API, command dispatch
-│   ├── web/                    # Rich Dark-Mode Industrial Web HMI
-│   │   ├── index.html          # Animated SVG P&ID diagram, gauges, annunciator
-│   │   ├── style.css           # Glassmorphism cyber-industrial theme
-│   │   └── app.js              # Real-time WebSocket/polling telemetry & trend charts
-│   ├── Makefile                # GCC/MinGW build configuration
-│   └── CMakeLists.txt          # CMake build configuration
-├── build_all.bat               # Windows batch script to compile all 3 layers
-├── build_all.sh                # Linux bash script to compile all 3 layers
-└── CMakeLists.txt              # Root CMake project file
+├── common/                    Shared headers used by all layers
+│   ├── PlantRegisters.hpp     64-register Modbus map, alarm bits, trip codes
+│   ├── ModbusProtocol.hpp     Minimal Modbus/TCP client + frame encoding
+│   └── SocketUtils.hpp        Cross-platform socket wrappers (WinSock / POSIX)
+├── Layer_1/                   Physics digital twin
+│   ├── include/  src/         *System.cpp models + DigitalTwinPlant + main.cpp
+│   └── Makefile  CMakeLists.txt
+├── Layer_2/                   Soft PLC
+│   ├── include/  src/         ModbusTcpServer, PlcDataBank, PlcScanEngine,
+│   │                          PlcSafetyInterlocks, PidController
+│   └── Makefile  CMakeLists.txt
+├── Layer_3/                   SCADA / HMI
+│   ├── include/  src/         ScadaPoller, HttpScadaServer, main.cpp
+│   ├── web/                   index.html, app.js, style.css (dashboard)
+│   └── Makefile  CMakeLists.txt
+├── docs/architecture.svg      Diagram above
+├── build_all.bat / .sh        Build all three layers (Windows / Linux)
+├── run_all.bat                Start all three layers locally (Windows)
+├── test_system.py             End-to-end smoke test (Modbus + HTTP)
+└── CMakeLists.txt             Root CMake project
 ```
 
----
+## Requirements
 
-## 3. Multi-VM Deployment Guide
+- `g++` with C++17 support and `make` (MinGW-w64 on Windows, `build-essential` on Linux). CMake is optional.
+- Clone the **whole repository** on each machine, because every layer includes headers from `../common`.
 
-This is the deployment that matters for the project goal: three **separate machines**, communicating only over the network, so traffic between Purdue layers is genuinely interceptable — Option A (running everything on one machine) does not satisfy this and is intentionally omitted here.
+## Option A: Run everything on one machine
 
-### 3.1 Machine roles
+Good for development and testing. All traffic goes over `127.0.0.1`.
 
-| Machine | Role | Runs |
+**Windows**
+
+```powershell
+.\build_all.bat
+.\run_all.bat
+```
+
+`run_all.bat` opens three windows (PLC first, then physics, then HMI). Open **http://localhost:8085** in a browser.
+
+**Linux**: build once, then use three terminals and start them in this order:
+
+```bash
+./build_all.sh
+cd Layer_2 && ./plc_controller 0.0.0.0 5020 100            # terminal 1: PLC
+cd Layer_1 && ./physics_engine 127.0.0.1 5020 500          # terminal 2: physics
+cd Layer_3 && ./scada_hmi 127.0.0.1 5020 8085 web          # terminal 3: HMI
+```
+
+## Option B: Run across VMs
+
+This is the real deployment. Each layer runs on its own machine, so the traffic between layers actually crosses the network and can be sniffed.
+
+| Machine | Runs | Connects to |
 |---|---|---|
-| VM A | Level 1 — Physics Digital Twin | `Layer_1` |
-| VM B | Level 2 — PLC | `Layer_2` |
-| Host (or VM C) | Level 3 — HMI | `Layer_3` |
+| VM B | Layer 2 (PLC) | listens on `0.0.0.0:5020` |
+| VM A | Layer 1 (physics) | `<PLC_IP>:5020` |
+| Host | Layer 3 (HMI) | `<PLC_IP>:5020`, serves `:8085` |
 
-Clone the **entire repository** onto both VMs (not just the one layer folder) — each layer's build includes headers from `../common`, so `common/` must sit next to the layer being built.
+**1. Network.** Give every VM a **Host-only** adapter (VMware: VMnet1, VirtualBox: Host-Only Adapter), plus an optional NAT adapter for internet. Find each IP with `ip -br a` (Linux) or `ipconfig` (Windows), and make sure every machine can `ping` every other one.
 
-### 3.2 Hypervisor network setup (VMware or VirtualBox)
-
-1. Shut each VM down fully before changing network settings.
-2. Give each VM a **Host-only** network adapter (VMware: VM → Settings → Network Adapter → Host-only). A second NAT adapter is optional and only needed for internet access (e.g. `apt install`).
-3. Power the VMs on and find their host-only IP on each:
-   ```bash
-   ip -br a
-   ```
-   Look for the interface in the same subnet as the host's VMware/VirtualBox host-only adapter (check with `ipconfig` on Windows — look for "VMware Network Adapter VMnet1/VMnet8" or "VirtualBox Host-Only Adapter"). DHCP-assigned addresses are fine; static IPs are not required.
-4. Confirm all three machines can ping each other in every direction before moving on. If a ping fails, the adapters are not on the same host-only network.
-
-### 3.3 Install build tools on both VMs
+**2. Install tools on both VMs.**
 
 ```bash
-sudo apt update
-sudo apt install -y build-essential cmake openssh-server dos2unix
-```
-`build-essential` provides `g++` and `make`, which is all the Makefiles need; CMake is an optional alternate build path. If a cloned/copied file has Windows line endings and `make` fails strangely, run:
-```bash
-find . -type f \( -name "*.sh" -o -name "Makefile" \) -exec dos2unix {} +
+sudo apt update && sudo apt install -y build-essential cmake dos2unix
 ```
 
-### 3.4 Build and start the PLC (VM B, Layer 2)
+If `make` fails strangely after copying files from Windows, fix the line endings with `find . -name Makefile -o -name "*.sh" | xargs dos2unix`.
+
+**3. Start the PLC first (VM B).**
 
 ```bash
-cd OT-security/Layer_2
-make
+cd OT-security/Layer_2 && make
 ./plc_controller 0.0.0.0 5020 100
 ```
-`0.0.0.0` is required so the server listens on all interfaces, not just localhost — otherwise VM A and the host can't reach it. Leave this terminal running; it's the long-lived server.
 
-### 3.5 Build and start the physics engine (VM A, Layer 1)
+Bind to `0.0.0.0` so the other machines can reach it. If you use `ufw`, open the port with `sudo ufw allow 5020/tcp`.
+
+**4. Start the physics engine (VM A).**
 
 ```bash
-cd OT-security/Layer_1
-make
+cd OT-security/Layer_1 && make
 ./physics_engine <PLC_IP> 5020 500
 ```
-Replace `<PLC_IP>` with VM B's host-only IP from step 3.2.
 
-### 3.6 Build and start the HMI (Host, Layer 3)
+**5. Start the HMI (Host, from inside `Layer_3`).**
 
-On Windows, install a C++ toolchain (MinGW-w64) if you don't have one, then:
 ```powershell
 cd OT-security\Layer_3
 mingw32-make
-.\scada_hmi.exe <PLC_IP> 5020 8080 web
-```
-Run this from inside `Layer_3`, since the `web` argument is a relative path to the static HTML/CSS/JS folder.
-
-**Port conflicts:** if port 8080 is already in use by something else on your machine, the program falls back to the next free port and prints the actual URL it bound to (e.g. `http://localhost:8081`) — always read that line rather than assuming 8080. You can also force a specific port by passing a different number as the third argument.
-
-Then open the printed URL in a browser. You should see the P&ID dashboard, with gauges updating once Layer 1 and Layer 2 are both running.
-
-### 3.7 Verifying the full pipeline is live
-
-Don't just trust that the page loaded — confirm data is actually flowing end-to-end:
-- Watch the HMI gauges for a few seconds; the values should be visibly changing, not static.
-- Stop Layer 1 (Ctrl+C) and confirm the gauges freeze at their last values rather than erroring — this is expected given the architecture note in Section 1, and confirms the write path works.
-- Restart Layer 1 and confirm the gauges resume moving within a couple seconds.
-- Stop Layer 2 and confirm the HMI loses connection — this confirms the PLC is the HMI's only upstream link.
-
-### 3.8 Firewall notes
-
-Debian ships with no firewall enabled by default. Ubuntu sometimes has `ufw` active — if a connection to port 5020 is refused rather than timing out, check with `sudo ufw status` and open it if needed:
-```bash
-sudo ufw allow 5020/tcp
+.\scada_hmi.exe <PLC_IP> 5020 8085 web
 ```
 
-### 3.9 Launch order summary
+Open the URL it prints. If 8085 is busy it falls back to the next free port, so read the printed line.
 
-1. VM B: start the PLC (`Layer_2`) first — everything else connects to it.
-2. VM A: start the physics engine (`Layer_1`), pointed at VM B's IP.
-3. Host: build and start the HMI (`Layer_3`), pointed at VM B's IP, then open it in a browser.
+**6. Verify the pipeline.** Gauges should move every second. Stop Layer 1 and the values freeze, start it again and they resume. Stop Layer 2 and the HMI shows disconnected.
 
-### 3.10 Next step: Layer 4 (Security node)
+## Command-line arguments
 
-Not yet deployed. Per the project proposal, this is deliberately deferred until the 3-layer integration above is stable and verified. It will add a 4th machine running packet capture (PyShark/Scapy) on the host-only interface, an anomaly detector, and Red/Blue Team agents that interact with the PLC over the same Modbus/TCP link.
+| Program | Arguments (defaults) |
+|---|---|
+| `plc_controller` | `[bind_ip=0.0.0.0] [port=5020] [scan_ms=100]` |
+| `physics_engine` | `[plc_ip=127.0.0.1] [port=5020] [tick_ms=500]` |
+| `scada_hmi` | `[plc_ip=127.0.0.1] [plc_port=5020] [http_port=8085] [web_dir=web]` |
