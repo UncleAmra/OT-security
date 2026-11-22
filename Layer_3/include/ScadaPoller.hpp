@@ -11,14 +11,9 @@
 #include "../../common/SocketUtils.hpp"
 #include "../../common/ModbusProtocol.hpp"
 
-/**
- * ==============================================================================
- *  SCADA POLLER (ASYNCHRONOUS HIGH-SPEED MODBUS CLIENT)
- * ==============================================================================
- * Continuously polls the Layer 2 PLC controller every 200-250ms, maintaining
- * the most recent plant state in a thread-safe cache, and dispatches operator
- * control commands via Modbus FC 06 / FC 16.
- * ==============================================================================
+/*
+ * Reads all PLC registers every 250 ms in a background thread and keeps
+ * the latest copy. Also sends operator commands as single-register writes.
  */
 
 class ScadaPoller {
@@ -58,6 +53,7 @@ private:
     std::vector<uint16_t> m_registers;
 
     std::thread           m_pollThread;
+    std::mutex            m_ioMutex;   // one Modbus request/response on the socket at a time
     NetUtils::TcpClient   m_tcpClient;
     Modbus::ModbusClient  m_modbus;
 };

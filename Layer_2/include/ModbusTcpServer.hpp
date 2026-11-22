@@ -9,13 +9,9 @@
 #include "../../common/SocketUtils.hpp"
 #include "../../common/ModbusProtocol.hpp"
 
-/**
- * ==============================================================================
- *  MULTI-CLIENT INDUSTRIAL MODBUS/TCP SERVER (DAEMON)
- * ==============================================================================
- * Listens on Port 5020 (or Port 502) and serves multiple industrial clients
- * simultaneously (Layer 1 Physics Twin, Layer 3 HMI, Layer 4 Security Agents).
- * ==============================================================================
+/*
+ * Modbus/TCP server for the PLC. Accepts several clients at once
+ * (Layer 1, Layer 3, and later Layer 4) and supports FC03, FC06 and FC16.
  */
 
 class ModbusTcpServer {

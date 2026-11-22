@@ -1,17 +1,9 @@
 #ifndef COMBUSTION_SYSTEM_HPP
 #define COMBUSTION_SYSTEM_HPP
 
-/**
- * ==============================================================================
- *  COMBUSTION, FURNACE DRAFT & BURNER MANAGEMENT SYSTEM (BMS)
- * ==============================================================================
- * Models:
- *   - Burner fuel feed dynamics & stoichiometric air combustion.
- *   - Forced Draft (FD) Fan & Induced Draft (ID) Fan air balance.
- *   - Balanced draft furnace pressure regulation (target: -5 to -15 mm H2O).
- *   - Flue gas oxygen (O2 %) & combustion thermal efficiency.
- *   - Optical flame scanner safeguard with flame failure trip.
- * ==============================================================================
+/*
+ * Combustion and draft model: fuel feed, FD/ID fans, furnace pressure,
+ * flue-gas O2, efficiency and flame detection.
  */
 
 class CombustionSystem {

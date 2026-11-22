@@ -1,18 +1,9 @@
 #ifndef GENERATOR_SYSTEM_HPP
 #define GENERATOR_SYSTEM_HPP
 
-/**
- * ==============================================================================
- *  SYNCHRONOUS GENERATOR, AVR & ELECTRICAL SWITCHYARD SYSTEM
- * ==============================================================================
- * Models:
- *   - Automatic Voltage Regulator (AVR) & field excitation current.
- *   - Terminal voltage generation (22.0 kV nominal).
- *   - Grid Synchronization Synchroscope (ΔV, Δf, Δθ phase angle difference).
- *   - 52G Main Generator Breaker closing interlock.
- *   - Active power (MW) & reactive power (MVAR) generation.
- *   - Generator stator thermal heating & electrical loss calculations.
- * ==============================================================================
+/*
+ * Generator model: excitation and terminal voltage, frequency, sync check,
+ * 52G breaker, MW/MVAR output and stator temperature.
  */
 
 class GeneratorSystem {

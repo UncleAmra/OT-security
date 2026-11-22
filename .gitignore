@@ -1,0 +1,28 @@
+# Build outputs (rebuild with build_all.bat / build_all.sh / make)
+*.exe
+*.o
+*.obj
+Layer_1/physics_engine
+Layer_2/plc_controller
+Layer_3/scada_hmi
+build/
+CMakeFiles/
+CMakeCache.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Packet captures
+*.pcap
+*.pcapng
+
+# Editor / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Secrets (API keys for Layer 4 later)
+.env

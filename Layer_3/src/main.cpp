@@ -1,10 +1,6 @@
-/**
- * ==============================================================================
- *  LAYER 3: SCADA / HMI OPERATOR WORKSTATION (C++ & EMBEDDED WEB SERVER)
- * ==============================================================================
- * Connects to Layer 2 PLC (VM 2) over Modbus/TCP, polls telemetry at 4 Hz,
- * and hosts the rich Web SCADA interface on port 8080 for operators on VM 3.
- * ==============================================================================
+/*
+ * Layer 3 entry point. Starts the PLC poller and the HTTP server
+ * (default port 8085).
  */
 
 #include <iostream>
@@ -55,7 +51,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::cout << "\033[1;35m================================================================================\n"
-              << "       PURDUE LAYER 3: SCADA / HMI OPERATOR WORKSTATION DAEMON (C++)            \n"
+              << " LAYER 3 - SCADA / HMI\n"
               << "================================================================================\033[0m\n"
               << "[INIT] Target Layer 2 PLC Controller: " << plcIp << ":" << plcPort << "\n"
               << "[INIT] Preferred SCADA Web Server Port: " << httpPort << "\n"

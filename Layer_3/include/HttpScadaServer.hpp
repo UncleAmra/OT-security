@@ -7,15 +7,9 @@
 #include "ScadaPoller.hpp"
 #include "../../common/SocketUtils.hpp"
 
-/**
- * ==============================================================================
- *  EMBEDDED SCADA WEB SERVER (C++ HTTP / JSON API)
- * ==============================================================================
- * Hosts an ultra-responsive web-based SCADA Operator Station:
- *   - Serves static assets: web/index.html, web/style.css, web/app.js
- *   - Serves GET /api/telemetry (JSON state payload)
- *   - Serves POST /api/command (Operator controls & ESD trips)
- * ==============================================================================
+/*
+ * HTTP server for the HMI. Serves the files in web/ plus
+ * GET /api/telemetry (JSON) and POST /api/command (operator actions).
  */
 
 class HttpScadaServer {

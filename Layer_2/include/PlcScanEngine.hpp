@@ -8,16 +8,9 @@
 #include "PlcSafetyInterlocks.hpp"
 #include "../../common/PlantRegisters.hpp"
 
-/**
- * ==============================================================================
- *  INDUSTRIAL PLC SCAN CYCLE ENGINE
- * ==============================================================================
- * Executes deterministic industrial cyclic control loops:
- *   1. Scan Inputs (Field telemetry from Layer 1, Operator setpoints from Layer 3)
- *   2. Evaluate Real-Time Regulatory PID Control Loops
- *   3. Evaluate Safety Interlocks (SIS / 2oo3)
- *   4. Write Outputs (Actuator commands, trip relays, alarm bitmasks)
- * ==============================================================================
+/*
+ * One PLC scan: read registers, run startup sequence and control loops,
+ * evaluate safety logic, write the changed registers back.
  */
 
 class PlcScanEngine {

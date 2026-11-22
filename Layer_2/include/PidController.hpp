@@ -3,14 +3,8 @@
 
 #include <algorithm>
 
-/**
- * ==============================================================================
- *  DISCRETE INDUSTRIAL PID CONTROLLER WITH ANTI-WINDUP
- * ==============================================================================
- * Implements standard ISA velocity/positional PID algorithm:
- *   u(t) = Kp * e(t) + Ki * integral(e) + Kd * de/dt
- * with integral clamping and output saturation.
- * ==============================================================================
+/*
+ * Basic PID controller with output limits and integral clamping.
  */
 
 class PidController {

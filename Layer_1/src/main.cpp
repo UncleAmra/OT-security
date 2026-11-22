@@ -1,11 +1,6 @@
-/**
- * ==============================================================================
- *  LAYER 1: MODULAR POWER PLANT DIGITAL TWIN ENGINE (PHYSICS TWIN)
- * ==============================================================================
- * Connects to Layer 2 PLC Controller over Modbus/TCP, reads actuator outputs,
- * steps thermodynamic & electromechanical state equations, and pushes full
- * plant telemetry registers.
- * ==============================================================================
+/*
+ * Layer 1 entry point. Each tick: read actuator registers from the PLC,
+ * step the plant model, write sensor registers back, print a status screen.
  */
 
 #include <iostream>
@@ -58,7 +53,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::cout << "\033[1;36m================================================================================\n"
-              << "       PURDUE LAYER 1: ADVANCED POWER PLANT DIGITAL TWIN ENGINE (C++)           \n"
+              << " LAYER 1 - PLANT PHYSICS MODEL\n"
               << "================================================================================\033[0m\n"
               << "[INIT] Target PLC Node: " << plcIp << ":" << plcPort << " (Unit ID: " << (int)unitId << ")\n"
               << "[INIT] Physics Tick Rate: " << tickRateMs << " ms\n"
@@ -106,20 +101,47 @@ int main(int argc, char *argv[]) {
             continue;
         }
 
-        // Step 2: Step the coupled digital twin physics equations
+        // Step 2: Step the plant model
+        bool resetRequested = plcRegisters[PlantRegisters::REG_RESET_SIMULATION_CMD] != 0;
         twinPlant.step(plcRegisters, telemetryRegisters, dt);
 
-        // Step 3: Write calculated sensor telemetry back to the PLC
-        if (!modbusClient.writeMultipleRegisters(tcpClient, unitId, 0, telemetryRegisters)) {
+        // Step 3: Write sensor values back to the PLC.
+        // Only the blocks this model computes are written. Writing all 64 registers
+        // would overwrite actuator outputs, operator setpoints and the PLC heartbeat
+        // that changed between our read and our write.
+        struct Block { uint16_t start; uint16_t count; };
+        static const Block sensorBlocks[] = {
+            {PlantRegisters::REG_BOILER_DRUM_TEMP,       8},  // 0-7   boiler + safety valve state
+            {PlantRegisters::REG_FURNACE_PRESSURE,       5},  // 13-17 draft, O2, air/fuel, burner, flame
+            {PlantRegisters::REG_COMBUSTION_EFFICIENCY,  2},  // 19-20 efficiency, turbine RPM
+            {PlantRegisters::REG_TURBINE_VIBRATION_BRG1, 17}, // 23-39 turbine sensors + generator
+            {PlantRegisters::REG_COND_HOTWELL_TEMP,      4},  // 40-43 condenser
+            {PlantRegisters::REG_DEAERATOR_PRESSURE,     2},  // 46-47 deaerator
+        };
+
+        bool writeOk = true;
+        for (const Block &b : sensorBlocks) {
+            std::vector<uint16_t> slice(telemetryRegisters.begin() + b.start,
+                                        telemetryRegisters.begin() + b.start + b.count);
+            if (!modbusClient.writeMultipleRegisters(tcpClient, unitId, b.start, slice)) {
+                writeOk = false;
+                break;
+            }
+        }
+        // Acknowledge a reset by clearing the reset command
+        if (writeOk && resetRequested) {
+            writeOk = modbusClient.writeSingleRegister(tcpClient, unitId, PlantRegisters::REG_RESET_SIMULATION_CMD, 0);
+        }
+        if (!writeOk) {
             std::cerr << "\033[1;31m[COMM ERROR] Failed writing telemetry registers to PLC. Resetting connection...\033[0m\n";
             tcpClient.disconnect();
             continue;
         }
 
-        // Step 4: High-Tech ANSI Console Visualization Dashboard
+        // Step 4: Print status screen
         std::cout << "\033[H\033[J"; // Clear screen
         std::cout << "\033[1;36m================================================================================\n"
-                  << " [" << getCurrentTimestamp() << "] POWER PLANT DIGITAL TWIN (LAYER 1) - TELEMETRY LOOP\n"
+                  << " [" << getCurrentTimestamp() << "] LAYER 1 - PLANT PHYSICS MODEL\n"
                   << "================================================================================\033[0m\n";
 
         // Boiler & Steam Drum Row

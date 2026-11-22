@@ -1,17 +1,9 @@
 #ifndef CONDENSER_FEEDWATER_SYSTEM_HPP
 #define CONDENSER_FEEDWATER_SYSTEM_HPP
 
-/**
- * ==============================================================================
- *  SURFACE CONDENSER, FEEDWATER & DEAERATOR SYSTEM
- * ==============================================================================
- * Models:
- *   - Surface condenser hotwell heat balance and vacuum dynamics (inHg).
- *   - Circulating water pumps (CWP) & cooling tower loop.
- *   - Redundant Boiler Feed Pumps (BFP A and B) with speed modulation.
- *   - Deaerator tank mass and energy storage balance.
- *   - Condensate Extraction Pump (CEP).
- * ==============================================================================
+/*
+ * Condenser and feedwater model: vacuum, hotwell temperature, circulating
+ * water, feed pumps A/B, deaerator and condensate pump.
  */
 
 class CondenserFeedwaterSystem {

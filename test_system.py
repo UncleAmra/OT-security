@@ -42,7 +42,7 @@ def http_post(url, data):
         return json.loads(response.read().decode())
 
 def run_tests():
-    project_dir = r"C:\Users\User\Desktop\project_x\OT-security"
+    project_dir = os.path.dirname(os.path.abspath(__file__))
     plc_exe = os.path.join(project_dir, "Layer_2", "plc_controller.exe")
     physics_exe = os.path.join(project_dir, "Layer_1", "physics_engine.exe")
     scada_exe = os.path.join(project_dir, "Layer_3", "scada_hmi.exe")
@@ -120,9 +120,9 @@ def run_tests():
         print(">> TEST 2 PASSED: Plant smoothly started up and maintains sustained stable normal operation!")
 
         # -------------------------------------------------------------
-        # TEST 3 & 4: CYBERATTACK VIA MODBUS & ANOMALY DETECTION
+        # TEST 3 & 4: ATTACK VIA MODBUS & ANOMALY DETECTION
         # -------------------------------------------------------------
-        print("\n=== TEST 3 & 4: CYBERATTACK (MODBUS MANIPULATION) & ANOMALY DETECTION ===")
+        print("\n=== TEST 3 & 4: MODBUS MANIPULATION ATTACK & ANOMALY DETECTION ===")
         # Attacker connects directly to Layer 2 PLC Modbus port 5020 and overrides fuel to 100 kg/min (runaway overfire)
         print("Attacker injecting malicious fuel feed override: REG 10 = 95 kg/min...")
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -154,7 +154,7 @@ def run_tests():
 
         assert attack_detected, "Anomaly detection failed to flag the fuel manipulation / overpressure!"
         assert tripped_overpressure, "Protective safety system failed to trip boiler on overpressure!"
-        print(">> TEST 3 & 4 PASSED: Cyberattack affected physics, anomaly was detected, and safety interlocks tripped safely!")
+        print(">> TEST 3 & 4 PASSED: Attack affected physics, anomaly was detected, and safety interlocks tripped safely!")
 
         # -------------------------------------------------------------
         # TEST 5: EMERGENCY STOP (ESD)

@@ -3,17 +3,9 @@
 
 #include <string>
 
-/**
- * ==============================================================================
- *  BOILER & STEAM DRUM SYSTEM (THERMAL & MASS BALANCE DIGITAL TWIN)
- * ==============================================================================
- * Models:
- *   - Water/steam drum thermodynamic equilibrium and saturation pressure curve.
- *   - Three-element drum level with realistic "shrink & swell" bubble expansion.
- *   - Dual ASME Section I safety relief valves with pop-open & reseat hysteresis.
- *   - Superheater section with spray attemperator (desuperheater).
- *   - Bottom blowdown water removal.
- * ==============================================================================
+/*
+ * Boiler and steam drum model: drum pressure/temperature/level (with shrink
+ * and swell), superheater with spray attemperator, two safety valves, blowdown.
  */
 
 class BoilerSystem {

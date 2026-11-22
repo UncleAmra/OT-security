@@ -35,6 +35,7 @@ void PlcScanEngine::executeScan(double dt) {
     m_dataBank.getFullSnapshot(registers);
 
     if (registers.size() < PlantRegisters::TOTAL_REGISTERS) return;
+    const std::vector<uint16_t> inputImage = registers; // to flush only what this scan changes
 
     // Check for Simulation Reset command
     if (registers[PlantRegisters::REG_RESET_SIMULATION_CMD] != 0) {
@@ -163,6 +164,6 @@ void PlcScanEngine::executeScan(double dt) {
     // Update scan heartbeat
     registers[PlantRegisters::REG_WATCHDOG_HEARTBEAT] = m_scanCount;
 
-    // PHASE 4: OUTPUT FLUSH TO DATA BANK
-    m_dataBank.applySnapshot(registers);
+    // PHASE 4: OUTPUT FLUSH TO DATA BANK (changed registers only)
+    m_dataBank.applyChanges(inputImage, registers);
 }

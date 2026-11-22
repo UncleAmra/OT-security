@@ -5,17 +5,9 @@
 #include <vector>
 #include "../../common/PlantRegisters.hpp"
 
-/**
- * ==============================================================================
- *  SAFETY INSTRUMENTED SYSTEM (SIS) & EMERGENCY TRIP LOGIC (2oo3)
- * ==============================================================================
- * Industrial emergency shutdown system enforcing:
- *   - Master Fuel Trip (MFT)
- *   - Turbine Emergency Trip System (ETS)
- *   - Generator Lockout (86G)
- *   - First-Out root cause identification
- *   - Alarm bitmask synthesis
- * ==============================================================================
+/*
+ * Safety logic: master fuel trip, turbine trip, generator lockout,
+ * emergency shutdown, alarm bits and first-out latch.
  */
 
 class PlcSafetyInterlocks {

@@ -7,14 +7,9 @@
 #include <iostream>
 #include "SocketUtils.hpp"
 
-/**
- * ==============================================================================
- *  LIGHTWEIGHT ROBUST MODBUS/TCP PROTOCOL ENGINE (C++17/C++20)
- * ==============================================================================
- * Encapsulates MBAP (Modbus Application Protocol) header and PDU serialization
- * for both Client (Master) and Server (Slave) modes.
- * Zero external library dependencies.
- * ==============================================================================
+/*
+ * Modbus/TCP frame encoding and a small client (FC03 read, FC06/FC16 write).
+ * No external dependencies.
  */
 
 namespace Modbus {

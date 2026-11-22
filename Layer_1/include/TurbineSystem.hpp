@@ -1,18 +1,10 @@
 #ifndef TURBINE_SYSTEM_HPP
 #define TURBINE_SYSTEM_HPP
 
-/**
- * ==============================================================================
- *  STEAM TURBINE & DIGITAL ELECTRO-HYDRAULIC (DEH) GOVERNOR SYSTEM
- * ==============================================================================
- * Models:
- *   - Main Stop Valve (MSV) & modulated Governor Control Valves (CV).
- *   - Rotor inertia & speed dynamics (J * dω/dt = Torque_steam - Torque_drag - Torque_load).
- *   - Critical rotational resonance vibration around 1800 RPM.
- *   - High-fidelity multi-bearing vibration probes (Bearings 1 & 2).
- *   - Overspeed Protection Controller (OPC @ 3708 RPM) & Emergency Trip (@ 3960 RPM).
- *   - Lube oil supply pressure & rotor differential expansion.
- * ==============================================================================
+/*
+ * Steam turbine model: stop and control valves, rotor speed from a torque
+ * balance, bearing vibration (with a resonance near 1800 RPM), lube oil and
+ * rotor expansion.
  */
 
 class TurbineSystem {

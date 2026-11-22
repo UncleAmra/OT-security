@@ -1,12 +1,6 @@
-/**
- * ==============================================================================
- *  LAYER 2: INDUSTRIAL PLC CONTROLLER & LOGIC RUNTIME ENGINE (C++)
- * ==============================================================================
- * Operates as the central industrial controller in the Purdue model:
- *   - Hosts multi-client Modbus/TCP server on Port 5020 (or 502)
- *   - Runs cyclic scan loop: Input Scan -> PID Loops -> Safety Interlocks -> Output
- *   - Enforces 2oo3 voting trip logic, Master Fuel Trip (MFT), and ESD
- * ==============================================================================
+/*
+ * Layer 2 entry point. Starts the Modbus server, runs the scan loop at a
+ * fixed rate and prints a status screen.
  */
 
 #include <iostream>
@@ -58,7 +52,7 @@ int main(int argc, char *argv[]) {
     }
 
     std::cout << "\033[1;32m================================================================================\n"
-              << "       PURDUE LAYER 2: INDUSTRIAL PLC CONTROLLER RUNTIME DAEMON (C++)           \n"
+              << " LAYER 2 - PLC\n"
               << "================================================================================\033[0m\n"
               << "[INIT] Modbus Server Binding: " << bindIp << ":" << port << "\n"
               << "[INIT] Target PLC Scan Cycle: " << scanCycleMs << " ms\n"
@@ -69,7 +63,7 @@ int main(int argc, char *argv[]) {
     ModbusTcpServer modbusServer(dataBank, bindIp, port);
 
     if (!modbusServer.start()) {
-        std::cerr << "[FATAL] Failed to launch Modbus TCP Server daemon.\n";
+        std::cerr << "[FATAL] Failed to start Modbus TCP server.\n";
         NetUtils::shutdownNetwork();
         return 1;
     }
@@ -80,7 +74,7 @@ int main(int argc, char *argv[]) {
     while (g_plcRunning) {
         auto startTime = std::chrono::steady_clock::now();
 
-        // Execute one deterministic PLC scan cycle
+        // Run one PLC scan
         scanEngine.executeScan(dt);
 
         // Update dashboard every ~500ms (every 5 scans)
@@ -93,7 +87,7 @@ int main(int argc, char *argv[]) {
 
             std::cout << "\033[H\033[J"; // Clear screen
             std::cout << "\033[1;32m================================================================================\n"
-                      << " [" << getTimestamp() << "] INDUSTRIAL PLC RUNTIME CONTROLLER (LAYER 2)\n"
+                      << " [" << getTimestamp() << "] LAYER 2 - PLC\n"
                       << "================================================================================\033[0m\n";
 
             // Controller Status Row
@@ -115,7 +109,7 @@ int main(int argc, char *argv[]) {
                       << "--> ID Fan Output: " << std::setw(3) << reg[PlantRegisters::REG_ID_FAN_SPEED] << " %\n\n";
 
             // Safety Instrumented System (SIS) Status
-            std::cout << " \033[1;31m[SAFETY INSTRUMENTED SYSTEM (SIS / 2oo3)]\033[0m\n"
+            std::cout << " \033[1;31m[SAFETY SYSTEM]\033[0m\n"
                       << "  Master Fuel Trip (MFT): " << (reg[PlantRegisters::REG_MASTER_FUEL_TRIP] ? "\033[1;5;31m[TRIPPED / FUEL SHUT]\033[0m" : "\033[1;32m[HEALTHY]\033[0m") << "\n"
                       << "  Turbine Emergency Trip: " << (reg[PlantRegisters::REG_TURBINE_TRIP] ? "\033[1;5;31m[TRIPPED / VALVES SHUT]\033[0m" : "\033[1;32m[HEALTHY]\033[0m") << "\n"
                       << "  Generator 52G Breaker:  " << (reg[PlantRegisters::REG_GRID_BREAKER_52G] ? "\033[1;32m[CLOSED / GRID TIED]\033[0m" : "\033[1;33m[OPEN / ISOLATED]\033[0m") << "\n";
@@ -164,7 +158,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    std::cout << "\n[PLC-SHUTDOWN] Stopping PLC Controller daemon...\n";
+    std::cout << "\n[PLC-SHUTDOWN] Stopping PLC...\n";
     modbusServer.stop();
     NetUtils::shutdownNetwork();
     std::cout << "[PLC-SHUTDOWN] Exited cleanly.\n";

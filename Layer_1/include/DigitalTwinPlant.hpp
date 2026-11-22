@@ -10,13 +10,9 @@
 #include "CondenserFeedwaterSystem.hpp"
 #include "../../common/PlantRegisters.hpp"
 
-/**
- * ==============================================================================
- *  DIGITAL TWIN POWER PLANT (COMPLETE COUPLED CYCLE ENGINE)
- * ==============================================================================
- * Glues all thermodynamic and electrical subsystems together into a unified
- * digital twin. Bridges the physical model state with the Modbus register array.
- * ==============================================================================
+/*
+ * Runs all subsystem models in order each tick and converts between the
+ * model state and the Modbus register array.
  */
 
 class DigitalTwinPlant {

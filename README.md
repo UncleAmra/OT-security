@@ -16,30 +16,66 @@ A small Operational Technology (OT) testbed that simulates a 500 MW steam power 
 
 ## Directory structure
 
-Each `.hpp` in `include/` has a matching `.cpp` in `src/`. Files marked *(legacy)* come from an older C version of the physics engine; they are not part of the build.
+Each `.hpp` in `include/` has a matching `.cpp` in `src/` (except `PidController.hpp`, which is header-only). Compiled binaries are not in the repo; build them with `build_all.bat` / `build_all.sh`.
 
 ```
 OT-security/
-├── common/                    Shared headers used by all layers
-│   ├── PlantRegisters.hpp     64-register Modbus map, alarm bits, trip codes
-│   ├── ModbusProtocol.hpp     Minimal Modbus/TCP client + frame encoding
-│   └── SocketUtils.hpp        Cross-platform socket wrappers (WinSock / POSIX)
-├── Layer_1/                   Physics digital twin
-│   ├── include/  src/         *System.cpp models + DigitalTwinPlant + main.cpp
-│   └── Makefile  CMakeLists.txt
-├── Layer_2/                   Soft PLC
-│   ├── include/  src/         ModbusTcpServer, PlcDataBank, PlcScanEngine,
-│   │                          PlcSafetyInterlocks, PidController
-│   └── Makefile  CMakeLists.txt
-├── Layer_3/                   SCADA / HMI
-│   ├── include/  src/         ScadaPoller, HttpScadaServer, main.cpp
-│   ├── web/                   index.html, app.js, style.css (dashboard)
-│   └── Makefile  CMakeLists.txt
-├── docs/architecture.svg      Diagram above
-├── build_all.bat / .sh        Build all three layers (Windows / Linux)
-├── run_all.bat                Start all three layers locally (Windows)
-├── test_system.py             End-to-end smoke test (Modbus + HTTP)
-└── CMakeLists.txt             Root CMake project
+├── common/                              Shared headers used by all three layers
+│   ├── PlantRegisters.hpp               64-register Modbus map, alarm bits, first-out trip codes
+│   ├── ModbusProtocol.hpp               Modbus/TCP client + request/response frame encoding
+│   └── SocketUtils.hpp                  Cross-platform TCP socket wrappers (WinSock / POSIX)
+│
+├── Layer_1/                             LAYER 1: PHYSICS DIGITAL TWIN
+│   ├── include/
+│   │   ├── DigitalTwinPlant.hpp         Runs all subsystems; registers in → physics → registers out
+│   │   ├── CombustionSystem.hpp         Fuel, FD/ID fans, furnace draft, flame, flue-gas O2
+│   │   ├── BoilerSystem.hpp             Steam drum pressure/temp/level, superheater, safety valves
+│   │   ├── TurbineSystem.hpp            Rotor speed, steam flow, vibration, lube oil, trip
+│   │   ├── GeneratorSystem.hpp          MW/MVAR, frequency, voltage, excitation, 52G breaker, sync
+│   │   └── CondenserFeedwaterSystem.hpp Vacuum, hotwell, deaerator, BFP A/B, condensate pump
+│   ├── src/
+│   │   ├── main.cpp                     Main loop: read PLC → step model → write sensors + console view
+│   │   └── *.cpp                        Implementations of the headers above
+│   ├── Makefile                         make build (Linux / MinGW)
+│   └── CMakeLists.txt                   CMake build
+│
+├── Layer_2/                             LAYER 2: SOFT PLC
+│   ├── include/
+│   │   ├── ModbusTcpServer.hpp          Multi-client Modbus/TCP server (FC03, FC06, FC16)
+│   │   ├── PlcDataBank.hpp              Mutex-protected store for the 64 holding registers
+│   │   ├── PlcScanEngine.hpp            10 Hz scan cycle: startup sequence + control loops
+│   │   ├── PidController.hpp            PID with output limits (header-only)
+│   │   └── PlcSafetyInterlocks.hpp      MFT, turbine trip, ESD, alarms, first-out latch
+│   ├── src/
+│   │   ├── main.cpp                     Starts server + scan loop, console status view
+│   │   └── *.cpp                        Implementations of the headers above
+│   ├── Makefile                         make build (Linux / MinGW)
+│   └── CMakeLists.txt                   CMake build
+│
+├── Layer_3/                             LAYER 3: SCADA / HMI
+│   ├── include/
+│   │   ├── ScadaPoller.hpp              Background Modbus poller (4 Hz) + command writes
+│   │   └── HttpScadaServer.hpp          HTTP server: static files + JSON API
+│   ├── src/
+│   │   ├── main.cpp                     Starts poller + HTTP server
+│   │   └── *.cpp                        Implementations of the headers above
+│   ├── web/
+│   │   ├── index.html                   Dashboard layout: P&ID, gauges, alarms, controls
+│   │   ├── app.js                       Polls /api/telemetry, draws trends, sends /api/command
+│   │   └── style.css                    Dashboard styling
+│   ├── Makefile                         make build (Linux / MinGW)
+│   └── CMakeLists.txt                   CMake build
+│
+├── docs/
+│   └── architecture.svg                 Architecture diagram (top of this README)
+├── build_all.bat                        Build all three layers (Windows)
+├── build_all.sh                         Build all three layers (Linux)
+├── run_all.bat                          Start all three layers on one Windows machine
+├── test_system.py                       End-to-end test: startup, attack, ESD, restart
+├── CMakeLists.txt                       Root CMake project (builds all layers)
+├── OT-Security Plant Simulator How It Works.pdf   Explainer for teammates
+├── .gitignore                           Keeps binaries, captures and secrets out of git
+└── README.md                            This file
 ```
 
 ## Requirements
@@ -79,7 +115,7 @@ This is the real deployment. Each layer runs on its own machine, so the traffic 
 | VM A | Layer 1 (physics) | `<PLC_IP>:5020` |
 | Host | Layer 3 (HMI) | `<PLC_IP>:5020`, serves `:8085` |
 
-**1. Network.** Give every VM a **Host-only** adapter (VMware: VMnet1, VirtualBox: Host-Only Adapter), plus an optional NAT adapter for internet. Find each IP with `ip -br a` (Linux) or `ipconfig` (Windows), and make sure every machine can `ping` every other one.
+**1. Network.** Give every VM a **Host-only** adapter (VMware: VMnet1, VirtualBox: Host-Only Adapter), plus an optional NAT adapter for internet. Find each IP with `ip -br a` (Linux) or `ipconfig` (Windows), and make sure every machine can `ping` every other one. To sniff traffic from another VM later (Wireshark / Scapy), set that adapter's **Promiscuous Mode** to **Allow All**.
 
 **2. Install tools on both VMs.**
 

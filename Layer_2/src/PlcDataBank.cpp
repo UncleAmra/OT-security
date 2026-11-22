@@ -75,6 +75,16 @@ void PlcDataBank::getFullSnapshot(std::vector<uint16_t> &outRegisters) const {
     outRegisters = m_registers;
 }
 
+void PlcDataBank::applyChanges(const std::vector<uint16_t> &before, const std::vector<uint16_t> &after) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    size_t n = std::min({m_registers.size(), before.size(), after.size()});
+    for (size_t i = 0; i < n; ++i) {
+        if (after[i] != before[i]) {
+            m_registers[i] = after[i];
+        }
+    }
+}
+
 void PlcDataBank::applySnapshot(const std::vector<uint16_t> &inRegisters) {
     std::lock_guard<std::mutex> lock(m_mutex);
     size_t copyCount = std::min(m_registers.size(), inRegisters.size());

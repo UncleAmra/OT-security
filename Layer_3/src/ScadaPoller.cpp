@@ -42,35 +42,48 @@ void ScadaPoller::pollLoop() {
     std::vector<uint16_t> buffer(PlantRegisters::TOTAL_REGISTERS, 0);
 
     while (m_running) {
-        if (!m_tcpClient.isConnected()) {
-            m_connected = false;
-            if (!m_tcpClient.connectToServer(m_plcIp, m_plcPort, 2000)) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-                continue;
+        int sleepMs = 250; // 4 Hz polling rate
+        {
+            // Hold the I/O lock for the whole request/response so an operator
+            // command from the HTTP thread can't interleave with this read.
+            std::lock_guard<std::mutex> io(m_ioMutex);
+
+            if (!m_tcpClient.isConnected()) {
+                m_connected = false;
+                if (m_tcpClient.connectToServer(m_plcIp, m_plcPort, 2000)) {
+                    m_connected = true;
+                    std::cout << "\033[1;32m[SCADA-POLLER] Connected to Layer 2 PLC at "
+                              << m_plcIp << ":" << m_plcPort << "\033[0m\n";
+                } else {
+                    sleepMs = 1000;
+                }
             }
-            m_connected = true;
-            std::cout << "\033[1;32m[SCADA-POLLER] Connected to Layer 2 PLC at " 
-                      << m_plcIp << ":" << m_plcPort << "\033[0m\n";
+
+            if (m_tcpClient.isConnected()) {
+                if (m_modbus.readHoldingRegisters(m_tcpClient, m_unitId, 0, PlantRegisters::TOTAL_REGISTERS, buffer)) {
+                    std::lock_guard<std::mutex> lock(m_cacheMutex);
+                    m_registers = buffer;
+                } else {
+                    m_connected = false;
+                    m_tcpClient.disconnect();
+                    sleepMs = 500;
+                }
+            }
         }
 
-        // Poll registers
-        if (m_modbus.readHoldingRegisters(m_tcpClient, m_unitId, 0, PlantRegisters::TOTAL_REGISTERS, buffer)) {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
-            m_registers = buffer;
-        } else {
-            m_connected = false;
-            m_tcpClient.disconnect();
-            std::this_thread::sleep_for(std::chrono::milliseconds(500));
-            continue;
-        }
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(250)); // 4 Hz polling rate
+        std::this_thread::sleep_for(std::chrono::milliseconds(sleepMs));
     }
 }
 
 bool ScadaPoller::sendWriteRegister(uint16_t address, uint16_t value) {
+    std::lock_guard<std::mutex> io(m_ioMutex);
     if (!m_tcpClient.isConnected()) return false;
-    return m_modbus.writeSingleRegister(m_tcpClient, m_unitId, address, value);
+    if (!m_modbus.writeSingleRegister(m_tcpClient, m_unitId, address, value)) {
+        m_connected = false;
+        m_tcpClient.disconnect();
+        return false;
+    }
+    return true;
 }
 
 bool ScadaPoller::triggerEmergencyShutdown() {

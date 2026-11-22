@@ -4,6 +4,8 @@
 #include <sstream>
 #include <vector>
 #include <cstring>
+#include <cctype>
+#include <cstdlib>
 #include <iomanip>
 
 HttpScadaServer::HttpScadaServer(ScadaPoller &poller, const std::string &webDir, 
@@ -122,14 +124,35 @@ static std::string getContentType(const std::string &path) {
 void HttpScadaServer::handleClient(socket_handle_t clientSock) {
     NetUtils::setSocketTimeout(clientSock, 3000);
 
+    // Read until we have the full headers and the full body (Content-Length).
+    // Clients often send the POST body in a separate packet, so a single
+    // recv() can miss it.
+    const size_t kMaxRequest = 64 * 1024;
+    std::string request;
     char buffer[4096];
-    int bytesRead = recv(clientSock, buffer, sizeof(buffer) - 1, 0);
-    if (bytesRead <= 0) {
+    size_t headerEnd = std::string::npos;
+    size_t contentLength = 0;
+    while (request.size() < kMaxRequest) {
+        int bytesRead = recv(clientSock, buffer, sizeof(buffer), 0);
+        if (bytesRead <= 0) break;
+        request.append(buffer, static_cast<size_t>(bytesRead));
+
+        if (headerEnd == std::string::npos) {
+            headerEnd = request.find("\r\n\r\n");
+            if (headerEnd == std::string::npos) continue;
+            std::string headers = request.substr(0, headerEnd);
+            for (char &c : headers) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            size_t cl = headers.find("content-length:");
+            if (cl != std::string::npos) {
+                contentLength = std::strtoul(headers.c_str() + cl + 15, nullptr, 10);
+            }
+        }
+        if (request.size() >= headerEnd + 4 + contentLength) break;
+    }
+    if (headerEnd == std::string::npos) {
         CLOSE_SOCKET(clientSock);
         return;
     }
-    buffer[bytesRead] = '\0';
-    std::string request(buffer);
 
     std::istringstream reqStream(request);
     std::string method, uri, httpVersion;
@@ -163,13 +186,22 @@ void HttpScadaServer::handleClient(socket_handle_t clientSock) {
     }
     else if (method == "GET") {
         // Serve Static File
-        std::string filePath = uri;
+        std::string filePath = uri.substr(0, uri.find_first_of("?#"));
         if (filePath == "/" || filePath.empty()) {
             filePath = "/index.html";
         }
 
-        std::string fullPath = m_webDir + filePath;
-        std::ifstream file(fullPath, std::ios::binary);
+        // Only serve files inside webDir: reject "..", backslashes and drive
+        // letters so requests like GET /../../secret.txt can't escape it.
+        bool unsafePath = filePath[0] != '/' ||
+                          filePath.find("..") != std::string::npos ||
+                          filePath.find('\\') != std::string::npos ||
+                          filePath.find(':') != std::string::npos;
+
+        std::ifstream file;
+        if (!unsafePath) {
+            file.open(m_webDir + filePath, std::ios::binary);
+        }
 
         if (file.is_open()) {
             std::ostringstream ss;

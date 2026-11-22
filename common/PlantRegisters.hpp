@@ -4,19 +4,9 @@
 #include <cstdint>
 #include <string>
 
-/**
- * ==============================================================================
- *  OT POWER PLANT DIGITAL TWIN & PLC ARCHITECTURE - MASTER MODBUS REGISTER MAP
- * ==============================================================================
- * Standardized holding register allocation (Holding Registers 40001 - 40064,
- * Modbus zero-based addresses 0000 - 0063).
- *
- * Applicable across:
- *   - Layer 1: Physics Engine (Digital Twin)
- *   - Layer 2: Industrial PLC Controller Engine
- *   - Layer 3: SCADA / HMI Operator Workstation
- *   - Layer 4: AI Security Sniffer & Threat Detection Node
- * ==============================================================================
+/*
+ * Shared register map: 64 holding registers (40001-40064, zero-based 0-63)
+ * used by every layer, plus alarm bits and first-out trip codes.
  */
 
 namespace PlantRegisters {

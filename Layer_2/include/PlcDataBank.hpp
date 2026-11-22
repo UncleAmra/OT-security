@@ -6,13 +6,9 @@
 #include <cstdint>
 #include "../../common/PlantRegisters.hpp"
 
-/**
- * ==============================================================================
- *  PLC DATA BANK (ATOMIC THREAD-SAFE INDUSTRIAL REGISTER TABLE)
- * ==============================================================================
- * Holds holding registers with thread safety across multi-client Modbus TCP
- * network connections and real-time PLC logic scan cycles.
- * ==============================================================================
+/*
+ * The PLC's 64 holding registers, protected by a mutex so the scan loop
+ * and the Modbus server threads can share them.
  */
 
 class PlcDataBank {
@@ -31,6 +27,9 @@ public:
     // Snapshot for logic engine
     void getFullSnapshot(std::vector<uint16_t> &outRegisters) const;
     void applySnapshot(const std::vector<uint16_t> &inRegisters);
+    // Write only registers where `after` differs from `before`, so Modbus writes
+    // that arrived while the scan was running are not overwritten.
+    void applyChanges(const std::vector<uint16_t> &before, const std::vector<uint16_t> &after);
 
 private:
     mutable std::mutex m_mutex;
