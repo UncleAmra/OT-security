@@ -93,19 +93,39 @@ FIRSTOUT = {0: "none", 1: "operator ESD", 2: "boiler overpressure", 3: "drum lev
             10: "generator reverse power", 11: "loss of excitation", 12: "electrical fault 87G"}
 
 
+def recv_exact(sock, n):
+    """Read exactly n bytes. TCP recv may return fewer, so loop until full."""
+    buf = b""
+    while len(buf) < n:
+        chunk = sock.recv(n - len(buf))
+        if not chunk:
+            raise IOError("PLC closed the connection mid-response")
+        buf += chunk
+    return buf
+
+
+# Meanings for a Modbus exception response (function code | 0x80).
+MB_EXCEPTIONS = {1: "illegal function", 2: "illegal data address",
+                 3: "illegal data value", 4: "slave device failure"}
+
+
 def modbus_read_all(sock, count=64):
     """FC03: read `count` holding registers starting at address 0."""
     # MBAP header (txid, proto, len, unit) + PDU (func, start, count)
     req = struct.pack(">HHHBBHH", 1, 0, 6, 1, 3, 0, count)
     sock.sendall(req)
-    header = sock.recv(7)
-    if len(header) < 7:
-        raise IOError("short MBAP header from PLC")
-    _, _, length, _ = struct.unpack(">HHHB", header)
-    pdu = sock.recv(length - 1)
-    if len(pdu) < 2 or pdu[0] != 3:
-        raise IOError(f"unexpected Modbus response: {pdu[:2].hex()}")
+    # MBAP header is 7 bytes; its length field counts the unit id + PDU.
+    _, _, length, _ = struct.unpack(">HHHB", recv_exact(sock, 7))
+    pdu = recv_exact(sock, length - 1)
+    func = pdu[0]
+    if func == (3 | 0x80):  # exception response
+        code = pdu[1] if len(pdu) > 1 else 0
+        raise IOError(f"PLC returned Modbus exception {code} ({MB_EXCEPTIONS.get(code, 'unknown')})")
+    if func != 3:
+        raise IOError(f"unexpected Modbus function in response: 0x{func:02x}")
     byte_count = pdu[1]
+    if byte_count != count * 2:
+        raise IOError(f"expected {count * 2} data bytes, PLC sent {byte_count}")
     return list(struct.unpack(f">{count}H", pdu[2:2 + byte_count]))
 
 
