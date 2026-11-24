@@ -128,7 +128,7 @@ If `make` fails strangely after copying files from Windows, fix the line endings
 **3. Start the PLC first (VM B).**
 
 ```bash
-cd OT-security/Layer_2 && make
+cd Desktop/OT-security/Layer_2 && make
 ./plc_controller 0.0.0.0 5020 100
 ```
 
@@ -137,7 +137,7 @@ Bind to `0.0.0.0` so the other machines can reach it. If you use `ufw`, open the
 **4. Start the physics engine (VM A).**
 
 ```bash
-cd OT-security/Layer_1 && make
+cd Desktop/OT-security/Layer_1 && make
 ./physics_engine <PLC_IP> 5020 500
 ```
 
