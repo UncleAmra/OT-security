@@ -6,82 +6,31 @@ A small Operational Technology (OT) testbed that simulates a 500 MW steam power 
 
 ## How it works
 
-**Layer 1: Physics Digital Twin** (`physics_engine`) plays the physical plant. It models combustion and draft, the boiler and steam drum, the steam turbine, the generator, and the condenser/feedwater loop as coupled equations, stepping them twice a second. On every tick it reads the actuator registers from the PLC (fuel rate, valve positions, pump speeds, breaker), computes the new plant state, and writes the sensor values (pressures, temperatures, RPM, MW, …) back into the PLC.
+**Layer 1: Physics Digital Twin** (`physics_engine`) models the plant — combustion, boiler, turbine, generator and condenser — as coupled equations stepped twice a second. Each tick it reads the actuator registers from the PLC and writes back the new sensor values.
 
-**Layer 2: Soft PLC** (`plc_controller`) is the hub of the system and the **only server**. It holds 64 Modbus holding registers (`common/PlantRegisters.hpp`) and runs a 10 Hz scan cycle: read inputs → run the startup sequence and PID loops (drum level, turbine speed/load, furnace draft) → evaluate the safety system (Master Fuel Trip, turbine trip, ESD, first-out latch) → write outputs. Layer 1 and Layer 3 both connect to it as Modbus clients on port **5020**.
+**Layer 2: Soft PLC** (`plc_controller`) is the hub and the **only server**. It holds 64 Modbus holding registers and runs a 10 Hz scan: read inputs → control loops → safety interlocks (Master Fuel Trip, trips, ESD) → write outputs. Layers 1 and 3 connect to it as Modbus clients on port **5020**.
 
-**Layer 3: SCADA / HMI** (`scada_hmi`) is the operator workstation. A background poller reads all 64 registers from the PLC 4 times a second. An embedded HTTP server (default port **8085**) serves the web dashboard in `Layer_3/web/` and exposes `/api/telemetry` and `/api/command`. Operator actions such as MW target, drum level setpoint, breaker, ESD and reset become single-register Modbus writes to the PLC.
+**Layer 3: SCADA / HMI** (`scada_hmi`) is the operator workstation. It polls all 64 registers 4 times a second and serves a web dashboard on port **8085**; operator actions become Modbus writes to the PLC.
 
-**How they are connected:** Layer 1 and Layer 3 **never talk to each other directly**; every value goes through the PLC's registers. So if Layer 1 stops, the HMI keeps showing the last known values (it looks normal but is frozen). If the PLC stops, both other layers lose their only link and keep retrying until it comes back. **Layer 4: Offensive Security / Documentation** (`Layer_4/`) is the attack and documentation layer. It holds the Python attack toolkit used to test the control network from a separate attacker machine — `recon.py` (read-only reconnaissance) and `attack.py` (unauthenticated Modbus command injection) — along with the penetration-test report and its evidence. (An automated security node with packet capture, an ML anomaly detector and Red/Blue AI agents is a planned extension of this layer.)
+**Layer 4: Offensive Security / Docs** (`Layer_4/`) holds the Python attack toolkit (`recon.py`, `attack.py`) used to test the network from a separate attacker machine, plus the penetration-test report and its evidence.
+
+**How they are connected:** Layers 1 and 3 never talk directly — every value goes through the PLC's registers. If Layer 1 stops, the HMI freezes on the last values; if the PLC stops, both lose their only link until it comes back.
 
 ## Directory structure
 
-Each `.hpp` in `include/` has a matching `.cpp` in `src/` (except `PidController.hpp`, which is header-only). Compiled binaries are not in the repo; build them with `build_all.bat` / `build_all.sh`.
+Each C++ layer (`Layer_1`–`Layer_3`) has its own `include/`, `src/` and `Makefile` / `CMakeLists.txt`. Compiled binaries are not in the repo; build them with `build_all.bat` / `build_all.sh`.
 
 ```
 OT-security/
-├── common/                              Shared headers used by all three layers
-│   ├── PlantRegisters.hpp               64-register Modbus map, alarm bits, first-out trip codes
-│   ├── ModbusProtocol.hpp               Modbus/TCP client + request/response frame encoding
-│   └── SocketUtils.hpp                  Cross-platform TCP socket wrappers (WinSock / POSIX)
-│
-├── Layer_1/                             LAYER 1: PHYSICS DIGITAL TWIN
-│   ├── include/
-│   │   ├── DigitalTwinPlant.hpp         Runs all subsystems; registers in → physics → registers out
-│   │   ├── CombustionSystem.hpp         Fuel, FD/ID fans, furnace draft, flame, flue-gas O2
-│   │   ├── BoilerSystem.hpp             Steam drum pressure/temp/level, superheater, safety valves
-│   │   ├── TurbineSystem.hpp            Rotor speed, steam flow, vibration, lube oil, trip
-│   │   ├── GeneratorSystem.hpp          MW/MVAR, frequency, voltage, excitation, 52G breaker, sync
-│   │   └── CondenserFeedwaterSystem.hpp Vacuum, hotwell, deaerator, BFP A/B, condensate pump
-│   ├── src/
-│   │   ├── main.cpp                     Main loop: read PLC → step model → write sensors + console view
-│   │   └── *.cpp                        Implementations of the headers above
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── Layer_2/                             LAYER 2: SOFT PLC
-│   ├── include/
-│   │   ├── ModbusTcpServer.hpp          Multi-client Modbus/TCP server (FC03, FC06, FC16)
-│   │   ├── PlcDataBank.hpp              Mutex-protected store for the 64 holding registers
-│   │   ├── PlcScanEngine.hpp            10 Hz scan cycle: startup sequence + control loops
-│   │   ├── PidController.hpp            PID with output limits (header-only)
-│   │   └── PlcSafetyInterlocks.hpp      MFT, turbine trip, ESD, alarms, first-out latch
-│   ├── src/
-│   │   ├── main.cpp                     Starts server + scan loop, console status view
-│   │   └── *.cpp                        Implementations of the headers above
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── Layer_3/                             LAYER 3: SCADA / HMI
-│   ├── include/
-│   │   ├── ScadaPoller.hpp              Background Modbus poller (4 Hz) + command writes
-│   │   └── HttpScadaServer.hpp          HTTP server: static files + JSON API
-│   ├── src/
-│   │   ├── main.cpp                     Starts poller + HTTP server
-│   │   └── *.cpp                        Implementations of the headers above
-│   ├── web/
-│   │   ├── index.html                   Dashboard layout: P&ID, gauges, alarms, controls
-│   │   ├── app.js                       Polls /api/telemetry, draws trends, sends /api/command
-│   │   └── style.css                    Dashboard styling
-│   ├── Makefile                         make build (Linux / MinGW)
-│   └── CMakeLists.txt                   CMake build
-│
-├── Layer_4/                             LAYER 4: OFFENSIVE SECURITY / DOCS
-│   ├── recon.py                         Read-only Modbus recon (dumps all 64 registers)
-│   ├── attack.py                        Unauthenticated attack toolkit (esd/overfire/breaker/setpoint)
-│   ├── evidence/                        Screenshots + packet capture from the test
-│   └── OT_Security_Pentest_Report.pdf   Penetration-test report (vulnerability confirmation)
-│
-├── docs/
-│   └── architecture.svg                 Architecture diagram (top of this README)
-├── build_all.bat                        Build all three layers (Windows)
-├── build_all.sh                         Build all three layers (Linux)
-├── run_all.bat                          Start all three layers on one Windows machine
-├── test_system.py                       End-to-end test: startup, attack, ESD, restart
-├── CMakeLists.txt                       Root CMake project (builds all layers)
-├── OT-Security Plant Simulator How It Works.pdf   Explainer for teammates
-├── .gitignore                           Keeps binaries, captures and secrets out of git
-└── README.md                            This file
+├── common/      Shared headers: 64-register Modbus map, protocol, sockets
+├── Layer_1/     Physics digital twin           (physics_engine)
+├── Layer_2/     Soft PLC — Modbus server        (plc_controller)
+├── Layer_3/     SCADA / HMI + web dashboard     (scada_hmi)
+├── Layer_4/     Attack scripts, evidence, pentest report
+├── docs/        Architecture diagram
+├── run_all.bat / build_all.*   Run / build all layers
+├── test_system.py              End-to-end test
+└── README.md
 ```
 
 ## Requirements
@@ -169,25 +118,17 @@ Open the URL it prints. If 8085 is busy it falls back to the next free port, so 
 
 ## Layer 4: security testing
 
-> **Authorized testbed use only.** The scripts in `Layer_4/` send live Modbus writes to the PLC. Run them only against this simulator on an isolated lab network, never against real equipment.
+> **Authorized testbed use only** — run these only against this simulator on an isolated lab network.
 
-`Layer_4/` contains the offensive tooling and the write-up that confirms the control network is exploitable. Both scripts use only the Python standard library, so they run on a bare attacker VM with nothing installed but `python3`.
-
-Run them from an attacker machine that can reach the PLC (same host-only segment, `<PLC_IP>:5020`):
+From an attacker machine that can reach the PLC (`<PLC_IP>:5020`):
 
 ```bash
 cd Layer_4
-
-# 1. Reconnaissance — read all 64 registers, no auth, no writes
 python3 recon.py <PLC_IP> 5020
-
-# 2. Command injection — each is one unauthenticated session
-python3 attack.py <PLC_IP> esd        # one-packet emergency shutdown
-python3 attack.py <PLC_IP> overfire   # MANUAL + fuel slam -> boiler overpressure trip
-python3 attack.py <PLC_IP> breaker    # trip the grid breaker open
-python3 attack.py <PLC_IP> restore    # reset the sim and return to AUTO
+python3 attack.py <PLC_IP> esd
+python3 attack.py <PLC_IP> overfire
+python3 attack.py <PLC_IP> breaker
+python3 attack.py <PLC_IP> restore
 ```
 
-For passive traffic capture (proves the protocol is cleartext), sniff port 5020 with `tcpdump` or Wireshark while the layers talk.
-
-The findings — unauthenticated reads (CWE-306), unauthenticated command injection (CWE-306) and cleartext transmission (CWE-319) — and their evidence are documented in **`Layer_4/OT_Security_Pentest_Report.pdf`**.
+`recon.py` reads all 64 registers (no auth); `attack.py` sends unauthenticated Modbus writes. Findings and evidence are in `Layer_4/OT_Security_Pentest_Report.pdf`.
