@@ -12,7 +12,7 @@ A small Operational Technology (OT) testbed that simulates a 500 MW steam power 
 
 **Layer 3: SCADA / HMI** (`scada_hmi`) is the operator workstation. A background poller reads all 64 registers from the PLC 4 times a second. An embedded HTTP server (default port **8085**) serves the web dashboard in `Layer_3/web/` and exposes `/api/telemetry` and `/api/command`. Operator actions such as MW target, drum level setpoint, breaker, ESD and reset become single-register Modbus writes to the PLC.
 
-**How they are connected:** Layer 1 and Layer 3 **never talk to each other directly**; every value goes through the PLC's registers. So if Layer 1 stops, the HMI keeps showing the last known values (it looks normal but is frozen). If the PLC stops, both other layers lose their only link and keep retrying until it comes back. **Layer 4** (security node with packet capture, an ML anomaly detector, and Red/Blue AI agents) is planned and not built yet.
+**How they are connected:** Layer 1 and Layer 3 **never talk to each other directly**; every value goes through the PLC's registers. So if Layer 1 stops, the HMI keeps showing the last known values (it looks normal but is frozen). If the PLC stops, both other layers lose their only link and keep retrying until it comes back. **Layer 4: Offensive Security / Documentation** (`Layer_4/`) is the attack and documentation layer. It holds the Python attack toolkit used to test the control network from a separate attacker machine — `recon.py` (read-only reconnaissance) and `attack.py` (unauthenticated Modbus command injection) — along with the penetration-test report and its evidence. (An automated security node with packet capture, an ML anomaly detector and Red/Blue AI agents is a planned extension of this layer.)
 
 ## Directory structure
 
@@ -65,6 +65,12 @@ OT-security/
 │   │   └── style.css                    Dashboard styling
 │   ├── Makefile                         make build (Linux / MinGW)
 │   └── CMakeLists.txt                   CMake build
+│
+├── Layer_4/                             LAYER 4: OFFENSIVE SECURITY / DOCS
+│   ├── recon.py                         Read-only Modbus recon (dumps all 64 registers)
+│   ├── attack.py                        Unauthenticated attack toolkit (esd/overfire/breaker/setpoint)
+│   ├── evidence/                        Screenshots + packet capture from the test
+│   └── OT_Security_Pentest_Report.pdf   Penetration-test report (vulnerability confirmation)
 │
 ├── docs/
 │   └── architecture.svg                 Architecture diagram (top of this README)
@@ -160,3 +166,28 @@ Open the URL it prints. If 8085 is busy it falls back to the next free port, so 
 | `plc_controller` | `[bind_ip=0.0.0.0] [port=5020] [scan_ms=100]` |
 | `physics_engine` | `[plc_ip=127.0.0.1] [port=5020] [tick_ms=500]` |
 | `scada_hmi` | `[plc_ip=127.0.0.1] [plc_port=5020] [http_port=8085] [web_dir=web]` |
+
+## Layer 4: security testing
+
+> **Authorized testbed use only.** The scripts in `Layer_4/` send live Modbus writes to the PLC. Run them only against this simulator on an isolated lab network, never against real equipment.
+
+`Layer_4/` contains the offensive tooling and the write-up that confirms the control network is exploitable. Both scripts use only the Python standard library, so they run on a bare attacker VM with nothing installed but `python3`.
+
+Run them from an attacker machine that can reach the PLC (same host-only segment, `<PLC_IP>:5020`):
+
+```bash
+cd Layer_4
+
+# 1. Reconnaissance — read all 64 registers, no auth, no writes
+python3 recon.py <PLC_IP> 5020
+
+# 2. Command injection — each is one unauthenticated session
+python3 attack.py <PLC_IP> esd        # one-packet emergency shutdown
+python3 attack.py <PLC_IP> overfire   # MANUAL + fuel slam -> boiler overpressure trip
+python3 attack.py <PLC_IP> breaker    # trip the grid breaker open
+python3 attack.py <PLC_IP> restore    # reset the sim and return to AUTO
+```
+
+For passive traffic capture (proves the protocol is cleartext), sniff port 5020 with `tcpdump` or Wireshark while the layers talk.
+
+The findings — unauthenticated reads (CWE-306), unauthenticated command injection (CWE-306) and cleartext transmission (CWE-319) — and their evidence are documented in **`Layer_4/OT_Security_Pentest_Report.pdf`**.
